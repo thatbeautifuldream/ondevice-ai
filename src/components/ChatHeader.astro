@@ -17,10 +17,12 @@ import Icon from "./Icon.astro";
 
 	<div
 		id="context-pill"
-		class="hidden items-center gap-2 rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-500 sm:flex dark:bg-white/5 dark:text-zinc-400"
+		class="hidden items-center gap-2 rounded-full bg-zinc-100 px-2.5 py-1 text-xs text-zinc-500 sm:flex dark:bg-white/5 dark:text-zinc-400"
 		title="Context window usage"
 	>
-		<span class="size-1.5 rounded-full bg-emerald-500"></span>
+		<span class="relative block h-1.5 w-16 overflow-hidden rounded-full bg-zinc-950/10 dark:bg-white/10">
+			<span id="context-bar" class="block h-full w-0 rounded-full bg-emerald-500 transition-all duration-300"></span>
+		</span>
 		<span class="tabular-nums" id="context-text">—</span>
 	</div>
 </header>

@@ -13,12 +13,20 @@ interface ChatMessage {
 	error?: boolean;
 }
 
+interface Compaction {
+	// messages[0..upTo) are represented by `prompts` (summaries); the rest are
+	// carried verbatim. The original messages always remain in `messages`.
+	upTo: number;
+	prompts: { role: "user" | "assistant"; content: string }[];
+}
+
 interface Conversation {
 	id: string;
 	title: string;
 	messages: ChatMessage[];
 	createdAt: number;
 	updatedAt: number;
+	compaction?: Compaction;
 }
 
 interface Settings {
@@ -45,12 +53,23 @@ const state = {
 	settings: loadSettings(),
 	availability: null as Availability | null,
 	isGenerating: false,
+	isCompacting: false,
+	overflowed: false,
 	abort: null as AbortController | null,
 	paramSupport: false,
 	params: null as { defaultTemperature: number; maxTemperature: number; defaultTopK: number; maxTopK: number } | null,
+	supportsSummarizer: false,
+	supportsLanguageDetector: false,
 };
 
+// When context usage crosses this ratio after a response, auto-compact the
+// session by summarizing older turns into initialPrompts.
+const AUTO_COMPACT_THRESHOLD = 0.8;
+
 const sessions = new Map<string, LanguageModel>();
+// Summarizers are shared across conversations, cached by `${format}:${lang}`.
+const summarizers = new Map<string, Summarizer>();
+let languageDetector: LanguageDetector | null = null;
 // Each live session holds memory and keeps the model loaded. Cap concurrent
 // sessions; least-recently-used idle ones are destroyed and can be rebuilt
 // from stored history on demand (the "restore past session" pattern).
@@ -233,8 +252,15 @@ function buildInitialPrompts(
 	const msgs: { role: "system" | "user" | "assistant"; content: string }[] = [];
 	const sys = state.settings.systemPrompt.trim();
 	if (sys) msgs.push({ role: "system", content: sys });
-	const end = Math.max(0, conv.messages.length - excludeLastN);
-	for (let i = 0; i < end; i++) msgs.push({ role: conv.messages[i].role, content: conv.messages[i].content });
+	// Compacted summaries replace the oldest turns; they are never evicted at
+	// runtime, so they stay permanently anchored in context.
+	const rawStart = conv.compaction?.upTo ?? 0;
+	const start = Math.min(rawStart, conv.messages.length);
+	if (conv.compaction) {
+		for (const p of conv.compaction.prompts) msgs.push({ role: p.role, content: p.content });
+	}
+	const end = Math.max(start, conv.messages.length - excludeLastN);
+	for (let i = start; i < end; i++) msgs.push({ role: conv.messages[i].role, content: conv.messages[i].content });
 	return msgs;
 }
 
@@ -244,8 +270,15 @@ async function ensureSession(conv: Conversation, excludeLastN = 0): Promise<Lang
 		touchSession(conv.id);
 		return existing;
 	}
+	return createSessionFor(conv, buildInitialPrompts(conv, excludeLastN));
+}
 
-	const initialPrompts = buildInitialPrompts(conv, excludeLastN);
+// Shared session creation: download monitor, sampling params, availability
+// bookkeeping, LRU eviction, and the context-overflow early-warning handler.
+async function createSessionFor(
+	conv: Conversation,
+	initialPrompts: { role: "system" | "user" | "assistant"; content: string }[],
+): Promise<LanguageModel> {
 	const options: Record<string, unknown> = {
 		initialPrompts,
 		monitor: (m: CreateMonitor) => {
@@ -270,7 +303,7 @@ async function ensureSession(conv: Conversation, excludeLastN = 0): Promise<Lang
 	try {
 		const session = await LanguageModel.create(options as LanguageModelCreateOptions);
 		sessions.set(conv.id, session);
-		session.oncontextoverflow = () => updateContextPill();
+		session.oncontextoverflow = onContextOverflow;
 		if (state.availability !== "available") {
 			state.availability = "available";
 			updateModelStatus();
@@ -285,6 +318,14 @@ async function ensureSession(conv: Conversation, excludeLastN = 0): Promise<Lang
 	}
 }
 
+// The browser fires this when it starts evicting oldest message pairs to fit
+// an incoming prompt. Flag it so we auto-compact as soon as the current
+// response finishes, instead of letting history be silently dropped.
+function onContextOverflow(): void {
+	state.overflowed = true;
+	updateContextPill();
+}
+
 async function refreshAvailability(): Promise<void> {
 	let avail: Availability;
 	try {
@@ -296,6 +337,234 @@ async function refreshAvailability(): Promise<void> {
 	updateModelStatus();
 	updateComposer();
 	updateEmptyStateNotice();
+}
+
+// ---------------------------------------------------------------------------
+// Session compaction (Summarizer API + Language Detector API)
+// ---------------------------------------------------------------------------
+
+async function detectCompactionSupport(): Promise<void> {
+	try {
+		state.supportsSummarizer = typeof Summarizer !== "undefined";
+	} catch {
+		state.supportsSummarizer = false;
+	}
+	try {
+		state.supportsLanguageDetector = typeof LanguageDetector !== "undefined";
+	} catch {
+		state.supportsLanguageDetector = false;
+	}
+}
+
+async function ensureLanguageDetector(): Promise<LanguageDetector | null> {
+	if (!state.supportsLanguageDetector) return null;
+	if (languageDetector) return languageDetector;
+	try {
+		languageDetector = await LanguageDetector.create();
+		return languageDetector;
+	} catch {
+		return null;
+	}
+}
+
+async function detectLanguage(text: string): Promise<string> {
+	const detector = await ensureLanguageDetector();
+	if (!detector) return navigator.language;
+	try {
+		const results = await detector.detect(text);
+		if (results.length > 0 && (results[0].confidence ?? 0) >= 0.7) {
+			return results[0].detectedLanguage ?? navigator.language;
+		}
+	} catch {
+		/* ignore */
+	}
+	return navigator.language;
+}
+
+function looksLikeMarkdown(text: string): boolean {
+	return /(?:^#{1,6} |^[-*+] |\d+\. |\*\*|__|\[.+?\]\(|^> |^```)/m.test(text);
+}
+
+type TextSegment = { type: "prose" | "code"; content: string };
+
+// Split a message into alternating prose and fenced-code segments so code
+// blocks pass through compaction untouched while prose is summarized.
+function splitByCodeFences(text: string): TextSegment[] {
+	const parts: TextSegment[] = [];
+	const re = /^```[^\n]*\n[\s\S]*?^```[ \t]*$/gm;
+	let lastIndex = 0;
+	let match: RegExpExecArray | null;
+	while ((match = re.exec(text)) !== null) {
+		if (match.index > lastIndex) parts.push({ type: "prose", content: text.slice(lastIndex, match.index) });
+		parts.push({ type: "code", content: match[0] });
+		lastIndex = match.index + match[0].length;
+	}
+	if (lastIndex < text.length) parts.push({ type: "prose", content: text.slice(lastIndex) });
+	return parts;
+}
+
+// Cache summarizers per format+lang. Prefer the smaller, faster model and
+// fall back to the default if it doesn't support the detected language.
+async function getSummarizer(format: SummarizerFormat, lang: string): Promise<Summarizer | null> {
+	const key = `${format}:${lang}`;
+	const cached = summarizers.get(key);
+	if (cached) return cached;
+
+	const baseOptions = {
+		type: "tldr" as const,
+		format,
+		length: "short" as const,
+		expectedInputLanguages: [lang],
+		expectedContextLanguages: [lang],
+		outputLanguage: lang,
+	};
+
+	let options: SummarizerCreateCoreOptions = { ...baseOptions, preference: "speed" };
+	let avail: Availability;
+	try {
+		avail = await Summarizer.availability(options);
+	} catch {
+		avail = "unavailable";
+	}
+	if (avail === "unavailable") {
+		options = { ...baseOptions, preference: "auto" };
+		try {
+			avail = await Summarizer.availability(options);
+		} catch {
+			avail = "unavailable";
+		}
+	}
+	// Only compact when the summarizer model is already downloaded; never
+	// trigger a surprise download mid-conversation.
+	if (avail !== "available") return null;
+
+	const summarizer = await Summarizer.create(options);
+	summarizers.set(key, summarizer);
+	return summarizer;
+}
+
+async function summarizeOne(msg: ChatMessage): Promise<{ role: "user" | "assistant"; content: string }> {
+	const lang = await detectLanguage(msg.content);
+	const parts = splitByCodeFences(msg.content);
+	let result = "";
+	for (const part of parts) {
+		if (part.type === "code") {
+			result += part.content;
+			continue;
+		}
+		const trimmed = part.content.trim();
+		if (!trimmed) {
+			result += part.content;
+			continue;
+		}
+		try {
+			const summarizer = await getSummarizer(looksLikeMarkdown(trimmed) ? "markdown" : "plain-text", lang);
+			if (!summarizer) {
+				result += part.content;
+				continue;
+			}
+			const summary = (
+				await summarizer.summarize(trimmed, {
+					context: `This is a ${msg.role} turn from a chat conversation. Preserve its key meaning as concisely as possible.`,
+				})
+			).trim();
+			result += summary && summary.length < trimmed.length ? summary : part.content;
+		} catch {
+			result += part.content;
+		}
+	}
+	const compacted = result.trim();
+	return { role: msg.role, content: compacted || msg.content };
+}
+
+// Summarize only the turns not already covered by a previous compaction, then
+// merge with the existing summaries.
+async function summarizeMessages(conv: Conversation): Promise<{ role: "user" | "assistant"; content: string }[]> {
+	const start = conv.compaction?.upTo ?? 0;
+	const out: { role: "user" | "assistant"; content: string }[] = conv.compaction ? [...conv.compaction.prompts] : [];
+	for (let i = start; i < conv.messages.length; i++) {
+		const msg = conv.messages[i];
+		if (msg.error || !msg.content.trim()) {
+			out.push({ role: msg.role, content: msg.content });
+			continue;
+		}
+		out.push(await summarizeOne(msg));
+	}
+	return out;
+}
+
+async function compactConversation(conv: Conversation): Promise<boolean> {
+	if (state.isCompacting || !state.supportsSummarizer) return false;
+	if (conv.messages.length === 0) return false;
+
+	state.isCompacting = true;
+	updateComposer();
+	updateContextPill();
+	showCompactStatus("Summarizing older messages to free up context…");
+	try {
+		const prompts = await summarizeMessages(conv);
+		conv.compaction = { upTo: conv.messages.length, prompts };
+		conv.updatedAt = Date.now();
+		saveConversations();
+
+		// Destroy the old session and seed a fresh one anchored on the summaries.
+		destroySession(conv.id);
+		try {
+			await createSessionFor(conv, buildInitialPrompts(conv, 0));
+			showCompactStatus("Context compacted — conversation continues.", 2500);
+			return true;
+		} catch {
+			// New session creation failed (e.g. summaries still too large). Roll
+			// back; the next message rebuilds lazily from the full history.
+			conv.compaction = undefined;
+			saveConversations();
+			showCompactStatus("Couldn't compact context right now.", 3000);
+			return false;
+		}
+	} catch {
+		showCompactStatus("Couldn't compact context right now.", 3000);
+		return false;
+	} finally {
+		state.isCompacting = false;
+		state.overflowed = false;
+		updateContextPill();
+		updateComposer();
+	}
+}
+
+// Called after each response. Auto-compacts when usage crosses the threshold
+// or when the browser signalled an overflow during the turn.
+async function maybeAutoCompact(conv: Conversation, session: LanguageModel): Promise<void> {
+	if (state.overflowed && !state.supportsSummarizer) {
+		showCompactStatus("Context window full — older messages may be dropped.", 4000);
+		state.overflowed = false;
+		return;
+	}
+	const total = typeof session.contextWindow === "number" ? session.contextWindow : 0;
+	const used = typeof session.contextUsage === "number" ? session.contextUsage : 0;
+	const ratio = total > 0 ? used / total : 0;
+	if (state.overflowed || ratio >= AUTO_COMPACT_THRESHOLD) {
+		await compactConversation(conv);
+	}
+}
+
+function destroySummarizers(): void {
+	for (const [, s] of summarizers) {
+		try {
+			s.destroy();
+		} catch {
+			/* ignore */
+		}
+	}
+	summarizers.clear();
+	if (languageDetector) {
+		try {
+			languageDetector.destroy();
+		} catch {
+			/* ignore */
+		}
+		languageDetector = null;
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -317,6 +586,7 @@ const els = {
 
 	chatTitle: () => $("#chat-title") as HTMLElement,
 	contextPill: () => $("#context-pill") as HTMLElement,
+	contextBar: () => $("#context-bar") as HTMLElement,
 	contextText: () => $("#context-text") as HTMLElement,
 
 	emptyState: () => $("#empty-state") as HTMLElement,
@@ -325,6 +595,8 @@ const els = {
 	downloadBanner: () => $("#download-banner") as HTMLElement,
 	downloadBar: () => $("#download-bar") as HTMLElement,
 	downloadStatus: () => $("#download-status") as HTMLElement,
+	compactBanner: () => $("#compact-banner") as HTMLElement,
+	compactStatus: () => $("#compact-status") as HTMLElement,
 	unavailableNotice: () => $("#unavailable-notice") as HTMLElement,
 
 	composerForm: () => $("#composer-form") as HTMLFormElement,
@@ -556,25 +828,61 @@ function setDownloadProgress(fraction: number): void {
 	els.downloadStatus().textContent = pct > 0 ? `${pct}% downloaded` : "Starting download…";
 }
 
+let compactHideTimer: ReturnType<typeof setTimeout> | null = null;
+function showCompactStatus(msg: string, autoHideMs?: number): void {
+	const banner = els.compactBanner();
+	els.compactStatus().textContent = msg;
+	banner.classList.remove("hidden");
+	banner.classList.add("block");
+	if (compactHideTimer) {
+		clearTimeout(compactHideTimer);
+		compactHideTimer = null;
+	}
+	if (autoHideMs) {
+		compactHideTimer = setTimeout(() => {
+			banner.classList.add("hidden");
+			banner.classList.remove("block");
+		}, autoHideMs);
+	}
+}
+function hideCompactStatus(): void {
+	els.compactBanner().classList.add("hidden");
+	els.compactBanner().classList.remove("block");
+}
+
+function contextBarColor(ratio: number): string {
+	if (ratio >= 0.9) return "bg-red-500";
+	if (ratio >= 0.7) return "bg-amber-500";
+	return "bg-emerald-500";
+}
+
 function updateContextPill(): void {
 	const pill = els.contextPill();
 	const text = els.contextText();
-	const conv = currentConversation();
-	const session = conv ? sessions.get(conv.id) : undefined;
-	if (session && typeof session.contextWindow === "number") {
+	const bar = els.contextBar();
+
+	if (state.isCompacting) {
 		pill.classList.remove("hidden");
 		pill.classList.add("flex");
-		text.textContent = `${fmtTokens(session.contextUsage)} / ${fmtTokens(session.contextWindow)} ctx`;
+		bar.style.width = "100%";
+		bar.className = "block h-full rounded-full bg-emerald-500 animate-pulse transition-all duration-300";
+		text.textContent = "Compacting";
+		return;
+	}
+
+	const conv = currentConversation();
+	const session = conv ? sessions.get(conv.id) : undefined;
+	if (session && typeof session.contextWindow === "number" && session.contextWindow > 0) {
+		pill.classList.remove("hidden");
+		pill.classList.add("flex");
+		const ratio = Math.min(1, session.contextUsage / session.contextWindow);
+		bar.style.width = `${Math.round(ratio * 100)}%`;
+		bar.className = `block h-full rounded-full ${contextBarColor(ratio)} transition-all duration-300`;
+		text.textContent = `${Math.round(ratio * 100)}%`;
 	} else {
 		pill.classList.add("hidden");
 		pill.classList.remove("flex");
 	}
-}
-
-function fmtTokens(n: number): string {
-	if (n >= 10000) return `${Math.round(n / 1000)}k`;
-	if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-	return String(Math.round(n));
 }
 
 // ---------------------------------------------------------------------------
@@ -585,7 +893,7 @@ function updateComposer(): void {
 	const input = els.composerInput();
 	const btn = els.sendBtn();
 	const hasText = input.value.trim().length > 0;
-	const blocked = state.availability === "unavailable";
+	const blocked = state.availability === "unavailable" || state.isCompacting;
 
 	if (state.isGenerating) {
 		btn.disabled = false;
@@ -620,7 +928,7 @@ function scrollToBottom(force = false): void {
 
 async function sendMessage(text: string): Promise<void> {
 	const trimmed = text.trim();
-	if (!trimmed || state.isGenerating) return;
+	if (!trimmed || state.isGenerating || state.isCompacting) return;
 	if (state.availability === "unavailable") return;
 
 	let conv = currentConversation();
@@ -679,6 +987,11 @@ async function sendMessage(text: string): Promise<void> {
 	renderHeader();
 	updateComposer();
 	updateContextPill();
+
+	// Auto-compact when the context window is filling up or overflowed during
+	// the turn. The old `session` still holds its final usage reading here.
+	await maybeAutoCompact(conv, session);
+	updateComposer();
 }
 
 async function streamResponse(
@@ -769,6 +1082,9 @@ async function regenerate(): Promise<void> {
 	if (lastUserIdx === -1) return;
 	const text = conv.messages[lastUserIdx].content;
 	conv.messages.splice(lastUserIdx);
+	// Trimming can leave a compaction pointing past the new length; drop it so
+	// the fresh session rebuilds from the (full) trimmed history.
+	conv.compaction = undefined;
 	// Force a fresh session built from the trimmed history.
 	destroySession(conv.id);
 	saveConversations();
@@ -853,6 +1169,7 @@ function wireEvents(): void {
 	// New chat
 	els.newChatBtn().addEventListener("click", () => {
 		createConversation();
+		hideCompactStatus();
 		renderAll();
 		closeSidebar();
 		els.composerInput().focus();
@@ -872,6 +1189,7 @@ function wireEvents(): void {
 			return;
 		}
 		state.currentId = id;
+		hideCompactStatus();
 		renderAll();
 		closeSidebar();
 	});
@@ -889,7 +1207,7 @@ function wireEvents(): void {
 	els.composerInput().addEventListener("keydown", (e) => {
 		if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
 			e.preventDefault();
-			if (!state.isGenerating) els.composerForm().requestSubmit();
+			if (!state.isGenerating && !state.isCompacting) els.composerForm().requestSubmit();
 		}
 	});
 	els.composerForm().addEventListener("submit", (e) => {
@@ -898,6 +1216,7 @@ function wireEvents(): void {
 			abortCurrent();
 			return;
 		}
+		if (state.isCompacting) return;
 		const text = els.composerInput().value;
 		if (!text.trim()) return;
 		els.composerInput().value = "";
@@ -950,6 +1269,7 @@ function wireEvents(): void {
 	});
 	els.clearAllBtn().addEventListener("click", () => {
 		for (const c of [...state.conversations]) deleteConversation(c.id);
+		destroySummarizers();
 		createConversation();
 		saveConversations();
 		renderAll();
@@ -997,6 +1317,7 @@ export function startApp(): void {
 	updateComposer();
 
 	void (async () => {
+		await detectCompactionSupport();
 		await detectParamSupport();
 		syncSettingsFields();
 		await refreshAvailability();
