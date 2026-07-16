@@ -9,9 +9,18 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
+    "check": "astro check",
     "astro": "astro"
   },
   "dependencies": {
-    "astro": "^7.0.9"
+    "@tailwindcss/vite": "^4.3.2",
+    "astro": "^7.0.9",
+    "marked": "^18.0.6",
+    "tailwindcss": "^4.3.2"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.9",
+    "@types/dom-chromium-ai": "^0.0.17",
+    "typescript": "^6.0.3"
   }
 }

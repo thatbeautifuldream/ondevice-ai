@@ -1,0 +1,35 @@
+---
+import Icon from "./Icon.astro";
+
+const suggestions = [
+	{ title: "Explain a concept", subtitle: "Explain quantum entanglement like I'm five", prompt: "Explain quantum entanglement like I'm five years old." },
+	{ title: "Write something", subtitle: "A short poem about the autumn rain", prompt: "Write a short, evocative poem about the autumn rain." },
+	{ title: "Brainstorm ideas", subtitle: "Names for a cozy neighborhood bookstore", prompt: "Brainstorm 10 names for a cozy neighborhood bookstore, with a one-line rationale each." },
+	{ title: "Get advice", subtitle: "Tips for staying focused while remote", prompt: "Give me 5 practical tips for staying focused while working from home." },
+];
+---
+
+<div class="mx-auto flex w-full max-w-2xl flex-col items-center justify-center px-4 py-10 sm:py-16">
+	<div class="flex size-12 items-center justify-center text-emerald-600 dark:text-emerald-400">
+		<Icon name="sparkles" class="size-7" />
+	</div>
+	<h1 class="mt-4 text-center text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
+		Chat with Gemini Nano
+	</h1>
+	<p class="mt-2 max-w-md text-center text-pretty text-sm text-zinc-500 sm:text-base dark:text-zinc-400">
+		Private, on-device AI. Your conversations never leave your computer — the model runs entirely in Chrome.
+	</p>
+
+	<div class="mt-8 grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
+		{suggestions.map((s) => (
+			<button
+				type="button"
+				class="suggestion-card group flex flex-col gap-1 rounded-xl border border-zinc-950/10 bg-white p-4 text-left transition-colors hover:border-zinc-950/20 hover:bg-zinc-50 dark:border-white/10 dark:bg-white/5 dark:hover:border-white/20 dark:hover:bg-white/10"
+				data-prompt={s.prompt}
+			>
+				<span class="text-sm font-medium text-zinc-900 dark:text-white">{s.title}</span>
+				<span class="text-sm text-zinc-500 dark:text-zinc-400">{s.subtitle}</span>
+			</button>
+		))}
+	</div>
+</div>

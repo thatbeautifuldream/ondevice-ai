@@ -1,5 +1,7 @@
 ## Development
 
+Typecheck: `pnpm check` (runs `astro check`, needs TypeScript 6 — pinned).
+
 When starting the dev server, use background mode:
 
 ```

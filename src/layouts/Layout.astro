@@ -1,23 +1,32 @@
+---
+import "../styles/global.css";
+
+interface Props {
+	title?: string;
+	description?: string;
+}
+
+const {
+	title = "On-Device AI — Chat with Gemini Nano",
+	description = "A private chat app powered by Chrome's built-in Prompt API and Gemini Nano. Everything runs locally on your device.",
+} = Astro.props;
+---
+
 <!doctype html>
-<html lang="en">
+<html lang="en" class="antialiased">
 	<head>
 		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
 		<meta name="generator" content={Astro.generator} />
-		<title>Astro Basics</title>
+		<title>{title}</title>
+		<meta name="description" content={description} />
+
+		<!-- Inter variable font (official rsms distribution) -->
+		<link rel="preconnect" href="https://rsms.me/" />
+		<link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
 	</head>
-	<body>
+	<body class="bg-white text-zinc-900 font-sans dark:bg-zinc-950 dark:text-zinc-100">
 		<slot />
 	</body>
 </html>
-
-<style>
-	html,
-	body {
-		margin: 0;
-		width: 100%;
-		height: 100%;
-	}
-</style>

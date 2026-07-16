@@ -1,0 +1,37 @@
+---
+import Icon from "./Icon.astro";
+---
+
+<div class="shrink-0 border-t border-zinc-950/5 bg-white px-3 py-3 sm:px-4 sm:py-4 dark:border-white/10 dark:bg-zinc-950">
+	<form id="composer-form" class="mx-auto w-full max-w-3xl">
+		<div
+			class="flex items-end gap-2 rounded-2xl bg-zinc-50 p-2 ring-1 ring-zinc-950/10 transition-shadow focus-within:ring-2 focus-within:ring-emerald-500/40 dark:bg-white/5 dark:ring-white/10 dark:focus-within:ring-emerald-400/40"
+		>
+			<label for="composer-input" class="sr-only">Message</label>
+			<textarea
+				id="composer-input"
+				name="message"
+				rows="1"
+				placeholder="Message the on-device model…"
+				class="scrollbar-thin max-h-48 min-h-[1.75rem] flex-1 resize-none bg-transparent px-2.5 py-1.5 text-base text-zinc-900 placeholder:text-zinc-400 focus:outline-none sm:text-sm dark:text-zinc-100 dark:placeholder:text-zinc-500"
+			></textarea>
+
+			<button
+				type="submit"
+				id="send-btn"
+				class="relative flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm transition-colors hover:bg-emerald-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-400 dark:shadow-none dark:disabled:bg-white/10 dark:disabled:text-zinc-500"
+				aria-label="Send message"
+				disabled
+			>
+				<span class="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2" aria-hidden="true"></span>
+				<span id="send-icon" class="flex"><Icon name="arrow-up" class="size-4" /></span>
+				<span id="stop-icon" class="hidden"><Icon name="stop" class="size-4" /></span>
+			</button>
+		</div>
+		<p class="mt-2 text-center text-xs text-zinc-400 dark:text-zinc-500">
+			<kbd class="rounded border border-zinc-950/10 px-1 font-sans dark:border-white/10">Enter</kbd> to send ·
+			<kbd class="rounded border border-zinc-950/10 px-1 font-sans dark:border-white/10">Shift</kbd>+
+			<kbd class="rounded border border-zinc-950/10 px-1 font-sans dark:border-white/10">Enter</kbd> for a new line
+		</p>
+	</form>
+</div>
