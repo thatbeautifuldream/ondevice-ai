@@ -163,7 +163,7 @@ export function EmptyState({ onSuggestion }: { onSuggestion: (prompt: string) =>
 				Chat with Gemini Nano
 			</h1>
 			<p className="mt-2 max-w-md text-center text-pretty text-sm text-zinc-500 sm:text-base dark:text-zinc-400">
-				Private, on-device AI. Your conversations never leave your computer — the model runs entirely in Chrome.
+				Private, on-device AI. Your conversations never leave your computer. The model runs entirely in Chrome.
 			</p>
 
 			<div className="mt-8 grid w-full grid-cols-1 gap-3 sm:grid-cols-2">

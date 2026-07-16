@@ -24,7 +24,7 @@ export const PRESETS: TPreset[] = [
 		instruction:
 			"Is the following social media post about pottery? Reply strictly according to the response schema.",
 		input:
-			"Mugs and ramen bowls, both a bit smaller than intended—but that's how it goes with reclaim. Glaze crawled the first time around, but pretty happy with it after refiring.",
+			"Mugs and ramen bowls, both a bit smaller than intended, but that's how it goes with reclaim. Glaze crawled the first time around, but pretty happy with it after refiring.",
 		schema: { type: "boolean" },
 	},
 	{
