@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* Streamdown (chat markdown renderer): scan its dist for Tailwind classes and
+   pull in its animation/typography stylesheet. KaTeX styles back the
+   @streamdown/math plugin. */
+@import "streamdown/styles.css";
+@import "katex/dist/katex.min.css";
+@source "../../node_modules/streamdown/dist/*.js";
+
 /* transitions.dev — Card resize tokens (sidebar collapse tween). */
 :root {
 	--resize-dur: 300ms;
@@ -23,6 +30,30 @@
 	}
 }
 
+/* Streamdown styles its elements with shadcn-style theme tokens (bg-background,
+   border-border, bg-muted, text-muted-foreground, bg-primary). Map them onto
+   the app's monochrome palette so its code blocks, tables, and controls match
+   the rest of the UI in both schemes. */
+:root {
+	--background: var(--color-white);
+	--foreground: var(--color-zinc-900);
+	--border: color-mix(in oklab, var(--color-zinc-950) 10%, transparent);
+	--muted: var(--color-zinc-50);
+	--muted-foreground: var(--color-zinc-500);
+	--sidebar: var(--color-zinc-50);
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--background: var(--color-zinc-950);
+		--foreground: var(--color-zinc-100);
+		--border: color-mix(in oklab, var(--color-white) 10%, transparent);
+		--muted: color-mix(in oklab, var(--color-white) 5%, transparent);
+		--muted-foreground: var(--color-zinc-400);
+		--sidebar: color-mix(in oklab, var(--color-white) 4%, transparent);
+	}
+}
+
 @theme {
 	--font-sans: "InterVariable", "Inter", ui-sans-serif, system-ui, sans-serif;
 	--font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
@@ -34,169 +65,21 @@
 	--color-accent-fg: var(--accent-fg);
 }
 
+@theme inline {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-border: var(--border);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-primary: var(--accent);
+	--color-primary-foreground: var(--accent-fg);
+	--color-sidebar: var(--sidebar);
+}
+
 /* Apply a squircle curve to every rounded corner in the app.
    corner-shape modifies the corner curve; border-radius (from rounded-* classes) sets its extent. */
 * {
 	corner-shape: squircle;
-}
-
-/* Markdown rendering for assistant messages. Follows the prose-content guideline:
-   a hand-written .prose-chat class instead of @tailwindcss/typography. */
-@utility prose-chat {
-	font-size: var(--text-base);
-	line-height: --spacing(7);
-	color: var(--color-zinc-700);
-	max-width: none;
-
-	& :where(p) {
-		margin: 0;
-	}
-	& :where(p + p) {
-		margin-top: --spacing(3);
-	}
-	& :where(h1, h2, h3, h4, h5, h6) {
-		font-weight: var(--font-weight-semibold);
-		color: var(--color-zinc-900);
-		line-height: 1.4;
-	}
-	& :where(h1) {
-		font-size: var(--text-lg);
-		margin: --spacing(5) 0 --spacing(2);
-	}
-	& :where(h2) {
-		font-size: var(--text-base);
-		margin: --spacing(5) 0 --spacing(2);
-	}
-	& :where(h3) {
-		font-size: var(--text-sm);
-		margin: --spacing(4) 0 --spacing(2);
-	}
-	& :where(h1, h2, h3):first-child {
-		margin-top: 0;
-	}
-	& :where(ul, ol) {
-		margin: --spacing(3) 0;
-		padding-left: --spacing(5);
-		display: flex;
-		flex-direction: column;
-		gap: --spacing(1);
-	}
-	& :where(ul) {
-		list-style: disc;
-	}
-	& :where(ol) {
-		list-style: decimal;
-	}
-	& :where(li)::marker {
-		color: var(--color-zinc-400);
-	}
-	& :where(li) {
-		margin: 0;
-	}
-	& :where(a) {
-		color: var(--color-accent);
-		text-decoration: underline;
-		text-underline-offset: 2px;
-		font-weight: var(--font-weight-medium);
-	}
-	@variant hover {
-		& :where(a) {
-			color: var(--color-accent-hover);
-		}
-	}
-	& :where(strong) {
-		font-weight: var(--font-weight-semibold);
-		color: var(--color-zinc-900);
-	}
-	& :where(em) {
-		font-style: italic;
-	}
-	& :where(blockquote) {
-		border-left: 2px solid var(--color-zinc-200);
-		padding-left: --spacing(4);
-		margin: --spacing(4) 0;
-		color: var(--color-zinc-500);
-		font-style: italic;
-	}
-	& :where(code) {
-		font-family: var(--font-mono);
-		font-size: 0.8125em;
-		background: var(--color-zinc-100);
-		padding: 0.15em 0.4em;
-		border-radius: var(--radius-md);
-		font-weight: var(--font-weight-medium);
-	}
-	& :where(pre) {
-		margin: --spacing(4) 0;
-		padding: --spacing(3.5);
-		background: var(--color-zinc-900);
-		color: var(--color-zinc-100);
-		border-radius: var(--radius-lg);
-		overflow-x: auto;
-		font-size: 0.8125rem;
-		line-height: --spacing(6);
-	}
-	& :where(pre) :where(code) {
-		background: none;
-		padding: 0;
-		border-radius: 0;
-		font-size: inherit;
-		color: inherit;
-		font-weight: var(--font-weight-normal);
-	}
-	& :where(hr) {
-		border: none;
-		border-top: 1px solid var(--color-zinc-200);
-		margin: --spacing(5) 0;
-	}
-	& :where(table) {
-		width: 100%;
-		border-collapse: collapse;
-		margin: --spacing(4) 0;
-		font-size: 0.8125rem;
-	}
-	& :where(th, td) {
-		border: 1px solid var(--color-zinc-200);
-		padding: --spacing(2) --spacing(3);
-		text-align: left;
-	}
-	& :where(th) {
-		background: var(--color-zinc-50);
-		font-weight: var(--font-weight-semibold);
-	}
-
-	@variant dark {
-		color: var(--color-zinc-300);
-		& :where(h1, h2, h3, h4, h5, h6) {
-			color: var(--color-white);
-		}
-		& :where(strong) {
-			color: var(--color-white);
-		}
-		& :where(li)::marker {
-			color: var(--color-zinc-500);
-		}
-		& :where(blockquote) {
-			border-left-color: var(--color-zinc-700);
-			color: var(--color-zinc-400);
-		}
-		& :where(code) {
-			background: color-mix(in oklab, var(--color-white) 10%, transparent);
-		}
-		& :where(pre) {
-			background: var(--color-zinc-950);
-			border: 1px solid color-mix(in oklab, var(--color-white) 10%, transparent);
-		}
-		& :where(hr) {
-			border-top-color: color-mix(in oklab, var(--color-white) 10%, transparent);
-		}
-		& :where(th, td) {
-			border-color: color-mix(in oklab, var(--color-white) 10%, transparent);
-		}
-		& :where(th) {
-			background: color-mix(in oklab, var(--color-white) 5%, transparent);
-		}
-	}
 }
 
 /* Slim, theme-aware scrollbars for the message + conversation lists. */
