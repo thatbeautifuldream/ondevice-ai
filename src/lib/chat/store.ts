@@ -93,26 +93,20 @@ export function create(): TConversation {
 	return conv;
 }
 
-// Switch to a fresh chat. Reuses an existing empty conversation instead of
-// stacking new ones, so "New chat" is idempotent and always lands on a
-// conversation with no history (and therefore a clean model session).
-export function startNew(): TConversation {
-	const empty = conversations.find((c) => c.messages.length === 0);
-	if (empty) {
-		currentId = empty.id;
-		return empty;
-	}
-	return create();
+// Switch to a fresh chat. No conversation is created until the first message
+// is sent (sendMessage calls create() then), so empty drafts never appear in
+// the sidebar. Any stale empty conversations from storage are pruned here.
+export function startNew(): void {
+	conversations = conversations.filter((c) => c.messages.length > 0);
+	currentId = null;
+	save();
 }
 
 export function remove(id: string): void {
 	const idx = conversations.findIndex((c) => c.id === id);
 	if (idx === -1) return;
 	conversations.splice(idx, 1);
-	if (currentId === id) {
-		currentId = conversations[0]?.id ?? null;
-		if (!currentId) create();
-	}
+	if (currentId === id) currentId = conversations[0]?.id ?? null;
 	save();
 }
 

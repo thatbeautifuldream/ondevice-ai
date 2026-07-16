@@ -23,6 +23,7 @@
     "@types/react-dom": "^19.2.3",
     "astro": "^7.0.9",
     "katex": "^0.17.0",
+    "motion": "^12.42.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "streamdown": "^2.5.0",

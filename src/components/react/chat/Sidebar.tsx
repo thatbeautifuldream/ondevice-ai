@@ -1,3 +1,4 @@
+import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { Icon } from "../Icon";
 import type { TAvailability } from "../../../lib/chat/agent";
 import type { TConversation } from "../../../lib/chat/types";
@@ -75,36 +76,48 @@ export function Sidebar({
 
 					<nav className="scrollbar-thin mt-3 min-h-0 flex-1 overflow-y-auto px-2" aria-label="Conversation list">
 						<p className="px-2 py-1.5 text-xs font-medium text-zinc-400 dark:text-zinc-500">Conversations</p>
-						<ul role="list" className="flex flex-col gap-0.5">
-							{conversations.map((conv) => {
-								const active = conv.id === currentId;
-								return (
-									<li key={conv.id} className="group relative">
-										<button
-											type="button"
-											onClick={() => onSelect(conv.id)}
-											className={
-												"relative flex w-full items-center rounded-lg px-2.5 py-2 text-left text-sm transition-colors " +
-												(active
-													? "bg-zinc-950/5 text-zinc-900 dark:bg-white/10 dark:text-white"
-													: "text-zinc-600 hover:bg-zinc-950/5 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-white")
-											}
+						<ul role="list" className="flex flex-col">
+							<MotionConfig reducedMotion="user">
+								<AnimatePresence initial={false}>
+								{conversations.map((conv) => {
+									const active = conv.id === currentId;
+									return (
+										<motion.li
+											key={conv.id}
+											layout
+											initial={{ opacity: 0, height: 0 }}
+											animate={{ opacity: 1, height: "auto" }}
+											exit={{ opacity: 0, height: 0 }}
+											transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+											className="group relative overflow-hidden py-px"
 										>
-											<span className="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2" aria-hidden="true"></span>
-											<span className="truncate pr-7">{conv.title || "New chat"}</span>
-										</button>
-										<button
-											type="button"
-											onClick={() => onDelete(conv.id)}
-											className="absolute top-1/2 right-1.5 -translate-y-1/2 flex size-7 items-center justify-center rounded-md text-zinc-400 opacity-0 transition-opacity hover:bg-zinc-950/10 hover:text-zinc-700 focus-visible:opacity-100 group-hover:opacity-100 dark:hover:bg-white/10 dark:hover:text-zinc-300"
-											aria-label="Delete conversation"
-										>
-											<span className="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2" aria-hidden="true"></span>
-											<Icon name="trash" />
-										</button>
-									</li>
-								);
-							})}
+											<button
+												type="button"
+												onClick={() => onSelect(conv.id)}
+												className={
+													"relative flex w-full items-center rounded-lg px-2.5 py-2 text-left text-sm transition-colors " +
+													(active
+														? "bg-zinc-950/5 text-zinc-900 dark:bg-white/10 dark:text-white"
+														: "text-zinc-600 hover:bg-zinc-950/5 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-white")
+												}
+											>
+												<span className="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2" aria-hidden="true"></span>
+												<span className="truncate pr-7">{conv.title || "New chat"}</span>
+											</button>
+											<button
+												type="button"
+												onClick={() => onDelete(conv.id)}
+												className="absolute top-1/2 right-1.5 -translate-y-1/2 flex size-7 items-center justify-center rounded-md text-zinc-400 opacity-0 transition-opacity hover:bg-zinc-950/10 hover:text-zinc-700 focus-visible:opacity-100 group-hover:opacity-100 dark:hover:bg-white/10 dark:hover:text-zinc-300"
+												aria-label="Delete conversation"
+											>
+												<span className="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2" aria-hidden="true"></span>
+												<Icon name="trash" />
+											</button>
+										</motion.li>
+									);
+								})}
+								</AnimatePresence>
+							</MotionConfig>
 						</ul>
 						{conversations.length === 0 && (
 							<p className="px-2 py-2 text-xs text-zinc-400 dark:text-zinc-500">No conversations yet.</p>

@@ -240,7 +240,7 @@ export class ChatAgent {
 		// Phase 4: auto-compact when the context window is filling up or the
 		// browser signalled an overflow during the turn.
 		if (this.overflowed && !this.supportsSummarizer) {
-			this.hooks.onCompactStatus?.("Context window full — older messages may be dropped.", 4000);
+			this.hooks.onCompactStatus?.("Context window is full. Older messages may be dropped.", 4000);
 			this.overflowed = false;
 			return;
 		}
@@ -642,7 +642,7 @@ export class ChatAgent {
 			this.destroySession(conv.id);
 			try {
 				await this.createSessionFor(conv, 0);
-				this.hooks.onCompactStatus?.("Context compacted — conversation continues.", 2500);
+				this.hooks.onCompactStatus?.("Context compacted. Conversation continues.", 2500);
 				return true;
 			} catch {
 				// New session creation failed (e.g. summaries still too large). Roll
