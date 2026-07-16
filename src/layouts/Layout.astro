@@ -1,15 +1,35 @@
 ---
 import "../styles/global.css";
+import {
+  absoluteUrl,
+  buildWebApplicationSchema,
+  buildWebsiteSchema,
+  defaultKeywords,
+  siteConfig,
+} from "../lib/seo";
 
 interface Props {
   title?: string;
   description?: string;
+  image?: string;
+  keywords?: string[];
 }
 
 const {
-  title = "Chat - Private, on-device AI",
-  description = "A private chat app powered by Chrome's built-in Prompt API and Gemini Nano. Everything runs locally on your device.",
+  title = siteConfig.title,
+  description = siteConfig.description,
+  image = siteConfig.defaultImage,
+  keywords = defaultKeywords,
 } = Astro.props;
+
+const canonicalUrl = new URL(Astro.url.pathname, Astro.site).href;
+const ogImage = absoluteUrl(image, Astro.site);
+const robots =
+  "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1";
+const structuredData = [
+  buildWebsiteSchema(Astro.site),
+  buildWebApplicationSchema(Astro.site),
+];
 ---
 
 <!doctype html>
@@ -21,6 +41,38 @@ const {
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
     <meta name="description" content={description} />
+    <meta name="keywords" content={keywords.join(", ")} />
+    <meta name="theme-color" content={siteConfig.themeColor} />
+    <meta name="robots" content={robots} />
+    <meta name="googlebot" content={robots} />
+    <meta name="application-name" content={siteConfig.name} />
+    <meta name="format-detection" content="telephone=no" />
+    <link rel="canonical" href={canonicalUrl} />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={siteConfig.name} />
+    <meta property="og:locale" content={siteConfig.locale} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:alt" content={title} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    <meta name="twitter:creator" content={siteConfig.twitter} />
+
+    {
+      structuredData.map((schema) => (
+        <script
+          type="application/ld+json"
+          is:inline
+          set:html={JSON.stringify(schema)}
+        />
+      ))
+    }
 
     <!-- Chrome Built-in AI Prompt API origin trial (sampling parameters) -->
     <meta
