@@ -651,7 +651,7 @@ function renderSidebar(): void {
 			const del = document.createElement("button");
 			del.type = "button";
 			del.className =
-				"absolute top-1/2 right-1.5 -translate-y-1/2 flex size-7 items-center justify-center rounded-md text-zinc-400 opacity-0 transition-opacity hover:bg-zinc-950/10 hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100 dark:hover:bg-white/10 dark:hover:text-red-400";
+				"absolute top-1/2 right-1.5 -translate-y-1/2 flex size-7 items-center justify-center rounded-md text-zinc-400 opacity-0 transition-opacity hover:bg-zinc-950/10 hover:text-zinc-700 focus-visible:opacity-100 group-hover:opacity-100 dark:hover:bg-white/10 dark:hover:text-zinc-300";
 			del.setAttribute("aria-label", "Delete conversation");
 			del.innerHTML =
 				`<span class="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2" aria-hidden="true"></span>` +
@@ -673,7 +673,7 @@ function messageActionsHtml(msg: ChatMessage, isLast: boolean): string {
 	html += `<button type="button" class="msg-copy relative flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-zinc-500 transition-colors hover:bg-zinc-950/5 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-200">
 		<span class="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2" aria-hidden="true"></span>
 		<span class="copy-idle flex items-center gap-1.5">${icon("clipboard")}Copy</span>
-		<span class="copy-done hidden items-center gap-1.5 text-emerald-600 dark:text-emerald-400">${icon("check")}Copied</span>
+		<span class="copy-done hidden items-center gap-1.5 text-accent">${icon("check")}Copied</span>
 	</button>`;
 	if (isLast && msg.role === "assistant" && !msg.streaming) {
 		html += `<button type="button" class="msg-regen relative flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-zinc-500 transition-colors hover:bg-zinc-950/5 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-200">
@@ -695,13 +695,13 @@ function createMessageEl(msg: ChatMessage, isLast: boolean): HTMLLIElement {
 		li.className = "flex justify-end";
 		const bubble = document.createElement("div");
 		bubble.className =
-			"max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-emerald-600 px-4 py-2.5 text-base text-white shadow-sm dark:shadow-none";
+			"max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-base text-accent-fg shadow-sm dark:shadow-none";
 		bubble.textContent = msg.content;
 		li.append(bubble);
 	} else {
 		li.className = "flex gap-3";
 		const avatar = document.createElement("div");
-		avatar.className = "mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400";
+		avatar.className = "mt-0.5 shrink-0 text-accent";
 		avatar.innerHTML = icon("sparkles", "size-4");
 
 		const body = document.createElement("div");
@@ -728,7 +728,7 @@ function updateMessageContent(li: HTMLElement, msg: ChatMessage): void {
 
 	if (msg.error) {
 		content.className =
-			"msg-content flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300";
+			"msg-content flex items-start gap-2 rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-700 dark:bg-white/5 dark:text-zinc-300";
 		content.innerHTML =
 			`<span class="mt-0.5 shrink-0">${icon("exclamation-triangle")}</span><div>${escapeHtml(
 				msg.content || "Something went wrong.",
@@ -793,10 +793,10 @@ function updateModelStatus(): void {
 
 	const dotBase = "size-2 shrink-0 rounded-full ";
 	const map: Record<Availability, { dot: string; text: string }> = {
-		available: { dot: dotBase + "bg-emerald-500", text: "Ready · Gemini Nano" },
-		downloadable: { dot: dotBase + "bg-amber-500", text: "Model ready to download" },
-		downloading: { dot: dotBase + "bg-amber-500 animate-pulse", text: "Downloading model…" },
-		unavailable: { dot: dotBase + "bg-red-500", text: "Unavailable in this browser" },
+		available: { dot: dotBase + "bg-accent", text: "Ready · Gemini Nano" },
+		downloadable: { dot: dotBase + "bg-zinc-400", text: "Model ready to download" },
+		downloading: { dot: dotBase + "bg-zinc-400 animate-pulse", text: "Downloading model…" },
+		unavailable: { dot: dotBase + "bg-zinc-300 dark:bg-zinc-600", text: "Unavailable in this browser" },
 	};
 	const info = state.availability ? map[state.availability] : { dot: dotBase + "bg-zinc-400", text: "Checking model…" };
 	dot.className = info.dot;
@@ -851,9 +851,9 @@ function hideCompactStatus(): void {
 }
 
 function contextBarColor(ratio: number): string {
-	if (ratio >= 0.9) return "bg-red-500";
-	if (ratio >= 0.7) return "bg-amber-500";
-	return "bg-emerald-500";
+	if (ratio >= 0.9) return "bg-accent";
+	if (ratio >= 0.7) return "bg-zinc-500 dark:bg-zinc-400";
+	return "bg-zinc-400 dark:bg-zinc-500";
 }
 
 function updateContextPill(): void {
@@ -865,7 +865,7 @@ function updateContextPill(): void {
 		pill.classList.remove("hidden");
 		pill.classList.add("flex");
 		bar.style.width = "100%";
-		bar.className = "block h-full rounded-full bg-emerald-500 animate-pulse transition-all duration-300";
+		bar.className = "block h-full rounded-full bg-accent animate-pulse transition-all duration-300";
 		text.textContent = "Compacting";
 		return;
 	}

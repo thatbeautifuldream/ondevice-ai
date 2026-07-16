@@ -1,10 +1,31 @@
 @import "tailwindcss";
 
+/* Monochrome accent tokens — single source of truth for the app's accent color.
+   These swap automatically with prefers-color-scheme, so utilities like
+   bg-accent / text-accent / ring-accent need no dark: variant. */
+:root {
+	--accent: var(--color-zinc-900);
+	--accent-hover: var(--color-zinc-700);
+	--accent-fg: var(--color-white);
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--accent: var(--color-white);
+		--accent-hover: var(--color-zinc-200);
+		--accent-fg: var(--color-zinc-900);
+	}
+}
+
 @theme {
 	--font-sans: "InterVariable", "Inter", ui-sans-serif, system-ui, sans-serif;
 	--font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
 
 	--font-sans--font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01", "ss03";
+
+	--color-accent: var(--accent);
+	--color-accent-hover: var(--accent-hover);
+	--color-accent-fg: var(--accent-fg);
 }
 
 /* Apply a squircle curve to every rounded corner in the app.
@@ -67,14 +88,14 @@
 		margin: 0;
 	}
 	& :where(a) {
-		color: var(--color-emerald-700);
+		color: var(--color-accent);
 		text-decoration: underline;
 		text-underline-offset: 2px;
 		font-weight: var(--font-weight-medium);
 	}
 	@variant hover {
 		& :where(a) {
-			color: var(--color-emerald-800);
+			color: var(--color-accent-hover);
 		}
 	}
 	& :where(strong) {
@@ -148,14 +169,6 @@
 		}
 		& :where(li)::marker {
 			color: var(--color-zinc-500);
-		}
-		& :where(a) {
-			color: var(--color-emerald-400);
-		}
-		@variant hover {
-			& :where(a) {
-				color: var(--color-emerald-300);
-			}
 		}
 		& :where(blockquote) {
 			border-left-color: var(--color-zinc-700);
