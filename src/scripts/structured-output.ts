@@ -3,18 +3,18 @@
 // conforms to a JSON Schema. See https://developer.chrome.com/docs/ai/prompt-api
 
 import { icon } from "../lib/icons";
+import { ChatAgent } from "../lib/chat/agent";
+import type { TAvailability } from "../lib/chat/agent";
 
-type Availability = "unavailable" | "downloadable" | "downloading" | "available";
-
-interface Preset {
+type TPreset = {
 	id: string;
 	label: string;
 	instruction: string;
 	input: string;
 	schema: Record<string, unknown>;
-}
+};
 
-const PRESETS: Preset[] = [
+const PRESETS: TPreset[] = [
 	{
 		id: "pottery",
 		label: "Boolean",
@@ -93,40 +93,54 @@ const PRESETS: Preset[] = [
 	},
 ];
 
-interface Issue {
+type TIssue = {
 	path: string;
 	msg: string;
-}
+};
 
-type CardStatus = "idle" | "running" | "done" | "error";
+type TCardStatus = "idle" | "running" | "done" | "error";
 
-interface StructuredResult {
-	status: CardStatus;
+type TStructuredResult = {
+	status: TCardStatus;
 	raw?: string;
 	parsed?: unknown;
 	parseError?: boolean;
-	issues?: Issue[];
+	issues?: TIssue[];
 	latencyMs?: number;
 	error?: string;
-}
+};
 
-interface FreeformResult {
-	status: CardStatus;
+type TFreeformResult = {
+	status: TCardStatus;
 	raw?: string;
 	latencyMs?: number;
 	error?: string;
-}
+};
 
 const state = {
-	availability: null as Availability | null,
-	baseSession: null as LanguageModel | null,
 	activePreset: "pottery",
 	running: false,
 	abort: null as AbortController | null,
 	tab: "parsed" as "parsed" | "raw",
-	structured: { status: "idle" } as StructuredResult,
-	freeform: { status: "idle" } as FreeformResult,
+	structured: { status: "idle" } as TStructuredResult,
+	freeform: { status: "idle" } as TFreeformResult,
 };
+
+// The playground shares the chat's agent: same download/availability handling,
+// same streaming core — it just drives the one-shot primitives instead of the
+// conversation loop. Hooks reference hoisted function declarations below.
+const agent = new ChatAgent({
+	settings: () => ({ systemPrompt: "", temperature: 1, topK: 3 }),
+	hooks: {
+		onAvailabilityChange: () => {
+			updateModelStatus();
+			updateRunEnabled();
+		},
+		onDownloadStart: () => els.downloadBanner().classList.remove("hidden"),
+		onDownloadProgress: (fraction) => setDownloadProgress(fraction),
+		onDownloadEnd: () => els.downloadBanner().classList.add("hidden"),
+	},
+});
 
 const $ = <T extends Element = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 
@@ -213,13 +227,13 @@ function typeMatches(value: unknown, type: string): boolean {
 	}
 }
 
-function validate(schema: Record<string, unknown>, value: unknown): Issue[] {
-	const issues: Issue[] = [];
+function validate(schema: Record<string, unknown>, value: unknown): TIssue[] {
+	const issues: TIssue[] = [];
 	walk(schema, value, "$", issues);
 	return issues;
 }
 
-function walk(schema: Record<string, unknown>, value: unknown, path: string, issues: Issue[]): void {
+function walk(schema: Record<string, unknown>, value: unknown, path: string, issues: TIssue[]): void {
 	if (typeof schema !== "object" || schema === null) return;
 
 	if (Array.isArray(schema.enum)) {
@@ -377,64 +391,29 @@ function buildPrompt(): string {
 	return [instruction, input].filter(Boolean).join("\n\n");
 }
 
-async function ensureBaseSession(): Promise<LanguageModel> {
-	if (state.baseSession) return state.baseSession;
-	const needsDownload = state.availability === "downloadable" || state.availability === "downloading";
-	if (needsDownload) {
-		state.availability = "downloading";
-		updateModelStatus();
-		els.downloadBanner().classList.remove("hidden");
-	}
-	const session = await LanguageModel.create({
-		monitor: (m) => {
-			m.addEventListener("downloadprogress", (e: ProgressEvent) => {
-				setDownloadProgress(typeof e.loaded === "number" ? e.loaded : 0);
-			});
-		},
-	});
-	state.baseSession = session;
-	if (state.availability !== "available") {
-		state.availability = "available";
-	}
-	els.downloadBanner().classList.add("hidden");
-	updateModelStatus();
-	return session;
-}
-
 function setDownloadProgress(fraction: number): void {
 	const pct = Math.round(Math.max(0, Math.min(1, fraction)) * 100);
 	els.downloadBar().style.width = `${pct}%`;
 	els.downloadStatus().textContent = pct > 0 ? `${pct}% downloaded` : "Starting download…";
 }
 
-async function refreshAvailability(): Promise<void> {
-	let avail: Availability;
-	try {
-		avail = await LanguageModel.availability();
-	} catch {
-		avail = "unavailable";
-	}
-	state.availability = avail;
-	updateModelStatus();
-	updateRunEnabled();
-}
-
 function updateModelStatus(): void {
-	const map: Record<Availability, { dot: string; text: string }> = {
+	const map: Record<TAvailability, { dot: string; text: string }> = {
 		available: { dot: "bg-emerald-500", text: "Ready · Gemini Nano" },
 		downloadable: { dot: "bg-amber-500", text: "Model ready to download" },
 		downloading: { dot: "bg-amber-500 animate-pulse", text: "Downloading model…" },
 		unavailable: { dot: "bg-red-500", text: "Unavailable in this browser" },
 	};
-	const info = state.availability ? map[state.availability] : { dot: "bg-zinc-400", text: "Checking model…" };
+	const availability = agent.availability;
+	const info = availability ? map[availability] : { dot: "bg-zinc-400", text: "Checking model…" };
 	els.modelDot().className = `size-2 shrink-0 rounded-full ${info.dot}`;
 	els.modelLabel().textContent = info.text;
-	const unavailable = state.availability === "unavailable";
+	const unavailable = availability === "unavailable";
 	els.unavailable().classList.toggle("hidden", !unavailable);
 }
 
 function updateRunEnabled(): void {
-	const blocked = state.availability === "unavailable";
+	const blocked = agent.availability === "unavailable";
 	if (state.running) {
 		els.runBtn().disabled = false;
 		els.runLabel().textContent = "Stop";
@@ -450,39 +429,6 @@ function updateRunEnabled(): void {
 
 function abortCurrent(): void {
 	state.abort?.abort();
-}
-
-async function runOnce(useSchema: boolean): Promise<{ raw: string; latencyMs: number }> {
-	const prompt = buildPrompt();
-	const session = await ensureBaseSession();
-	const clone = await session.clone();
-	const ac = new AbortController();
-	state.abort = ac;
-	const options: LanguageModelPromptOptions = { signal: ac.signal };
-	if (useSchema) {
-		const { schema, error } = tryParseSchema();
-		if (error) throw new SchemaError(error);
-		if (schema) options.responseConstraint = schema;
-	}
-	const started = performance.now();
-	try {
-		const raw = await clone.prompt(prompt, options);
-		return { raw, latencyMs: Math.round(performance.now() - started) };
-	} finally {
-		try {
-			clone.destroy();
-		} catch {
-			/* ignore */
-		}
-		state.abort = null;
-	}
-}
-
-class SchemaError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = "SchemaError";
-	}
 }
 
 function badgeHtml(tone: "ok" | "warn" | "err" | "muted", label: string): string {
@@ -610,20 +556,12 @@ function tabBtnClass(active: boolean): string {
 		: "border-transparent text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200";
 }
 
-function friendlyError(e: unknown): string {
-	const err = e as DOMException;
-	if (err?.name === "AbortError") return "Run aborted.";
-	if (err?.name === "NotSupportedError") return "The on-device model isn't available in this browser.";
-	if (err?.name === "QuotaExceededError") return "The context window was exceeded.";
-	return err?.message || "Something went wrong while generating a response.";
-}
-
 async function runStructured(): Promise<void> {
 	if (state.running) {
 		abortCurrent();
 		return;
 	}
-	const { error } = tryParseSchema();
+	const { schema, error } = tryParseSchema();
 	els.schemaError().textContent = error ?? "";
 	if (error) return;
 
@@ -632,37 +570,41 @@ async function runStructured(): Promise<void> {
 	state.structured = { status: "running" };
 	renderStructured();
 
-	try {
-		const { raw, latencyMs } = await runOnce(true);
-		let parsed: unknown;
-		let parseError = false;
-		let parseErrMsg: string | undefined;
-		try {
-			parsed = JSON.parse(raw);
-		} catch {
-			parseError = true;
-			parseErrMsg = "The model returned text that isn't valid JSON.";
+	state.abort = new AbortController();
+	for await (const event of agent.streamObject({
+		prompt: buildPrompt(),
+		schema: schema ?? undefined,
+		signal: state.abort.signal,
+	})) {
+		switch (event.type) {
+			case "chunk":
+				break;
+			case "done": {
+				const parseError = event.parseError !== undefined;
+				const issues = parseError || !schema ? [] : validate(schema, event.object);
+				state.structured = {
+					status: "done",
+					raw: event.raw,
+					parsed: event.object,
+					parseError,
+					error: event.parseError,
+					issues,
+					latencyMs: event.latencyMs,
+				};
+				break;
+			}
+			case "aborted":
+				state.structured = { status: "idle" };
+				break;
+			case "error":
+				state.structured = { status: "error", error: event.message };
+				break;
 		}
-		const schema = tryParseSchema().schema;
-		const issues = parseError || !schema ? [] : validate(schema, parsed);
-		state.structured = { status: "done", raw, parsed, parseError, error: parseErrMsg, issues, latencyMs };
-	} catch (e) {
-		if ((e as DOMException)?.name === "AbortError") {
-			state.structured = state.structured.status === "running" ? { status: "idle" } : state.structured;
-			state.running = false;
-			updateRunEnabled();
-			renderStructured();
-			return;
-		}
-		state.structured = { status: "error", error: friendlyError(e) };
-	} finally {
-		if (state.structured.status === "running") {
-			state.structured = { status: "idle" };
-		}
-		state.running = false;
-		updateRunEnabled();
-		renderStructured();
 	}
+	state.abort = null;
+	state.running = false;
+	updateRunEnabled();
+	renderStructured();
 }
 
 async function runFreeform(): Promise<void> {
@@ -671,23 +613,29 @@ async function runFreeform(): Promise<void> {
 	updateRunEnabled();
 	state.freeform = { status: "running" };
 	renderFreeform();
-	try {
-		const { raw, latencyMs } = await runOnce(false);
-		state.freeform = { status: "done", raw, latencyMs };
-	} catch (e) {
-		if ((e as DOMException)?.name === "AbortError") {
-			state.freeform = { status: "idle" };
-			state.running = false;
-			updateRunEnabled();
-			renderFreeform();
-			return;
+
+	state.abort = new AbortController();
+	for await (const event of agent.streamText({ prompt: buildPrompt(), signal: state.abort.signal })) {
+		switch (event.type) {
+			case "chunk":
+				// Stream the free-form reply live as it generates.
+				els.fBody().innerHTML = `<pre class="${CODE_PANEL} whitespace-pre-wrap">${escapeHtml(event.content)}</pre>`;
+				break;
+			case "done":
+				state.freeform = { status: "done", raw: event.content, latencyMs: event.latencyMs };
+				break;
+			case "aborted":
+				state.freeform = { status: "idle" };
+				break;
+			case "error":
+				state.freeform = { status: "error", error: event.message };
+				break;
 		}
-		state.freeform = { status: "error", error: friendlyError(e) };
-	} finally {
-		state.running = false;
-		updateRunEnabled();
-		renderFreeform();
 	}
+	state.abort = null;
+	state.running = false;
+	updateRunEnabled();
+	renderFreeform();
 }
 
 function formatSchema(): void {
@@ -741,5 +689,5 @@ export function startPlayground(): void {
 	renderStructured();
 	renderFreeform();
 	updateRunEnabled();
-	void refreshAvailability();
+	void agent.boot();
 }

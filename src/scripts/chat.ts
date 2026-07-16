@@ -1,200 +1,48 @@
 import { marked } from "marked";
 import { icon } from "../lib/icons";
+import { ChatAgent } from "../lib/chat/agent";
+import * as store from "../lib/chat/store";
+import type { TAvailability } from "../lib/chat/agent";
+import type { TChatMessage } from "../lib/chat/types";
 
 // ---------------------------------------------------------------------------
-// Types
+// UI state
 // ---------------------------------------------------------------------------
 
-interface ChatMessage {
-	id: string;
-	role: "user" | "assistant";
-	content: string;
-	streaming?: boolean;
-	error?: boolean;
-}
-
-interface Compaction {
-	// messages[0..upTo) are represented by `prompts` (summaries); the rest are
-	// carried verbatim. The original messages always remain in `messages`.
-	upTo: number;
-	prompts: { role: "user" | "assistant"; content: string }[];
-}
-
-interface Conversation {
-	id: string;
-	title: string;
-	messages: ChatMessage[];
-	createdAt: number;
-	updatedAt: number;
-	compaction?: Compaction;
-}
-
-interface Settings {
-	systemPrompt: string;
-	temperature: number;
-	topK: number;
-}
-
-type Availability = "unavailable" | "downloadable" | "downloading" | "available";
-
-// ---------------------------------------------------------------------------
-// State
-// ---------------------------------------------------------------------------
-
-const STORAGE_CONVOS = "oda.conversations.v1";
-const STORAGE_SETTINGS = "oda.settings.v1";
 const STORAGE_SIDEBAR = "oda.sidebar.v1";
 
-const DEFAULT_SYSTEM =
-	"You are a helpful, friendly assistant running entirely on the user's device. Keep responses concise and clear. Use Markdown when it helps readability.";
-
 const state = {
-	conversations: [] as Conversation[],
-	currentId: null as string | null,
-	settings: loadSettings(),
-	availability: null as Availability | null,
+	settings: store.loadSettings(),
 	isGenerating: false,
-	isCompacting: false,
-	overflowed: false,
+	generatingId: null as string | null,
 	abort: null as AbortController | null,
-	paramSupport: false,
-	params: null as { defaultTemperature: number; maxTemperature: number; defaultTopK: number; maxTopK: number } | null,
-	supportsSummarizer: false,
-	supportsLanguageDetector: false,
 };
 
-// When context usage crosses this ratio after a response, auto-compact the
-// session by summarizing older turns into initialPrompts.
-const AUTO_COMPACT_THRESHOLD = 0.8;
-
-const sessions = new Map<string, LanguageModel>();
-// Summarizers are shared across conversations, cached by `${format}:${lang}`.
-const summarizers = new Map<string, Summarizer>();
-let languageDetector: LanguageDetector | null = null;
-// Each live session holds memory and keeps the model loaded. Cap concurrent
-// sessions; least-recently-used idle ones are destroyed and can be rebuilt
-// from stored history on demand (the "restore past session" pattern).
-const MAX_SESSIONS = 3;
-
-// ---------------------------------------------------------------------------
-// Persistence
-// ---------------------------------------------------------------------------
-
-function uid(): string {
-	return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function loadSettings(): Settings {
-	try {
-		const raw = localStorage.getItem(STORAGE_SETTINGS);
-		if (raw) {
-			const parsed = JSON.parse(raw) as Partial<Settings>;
-			return {
-				systemPrompt: typeof parsed.systemPrompt === "string" ? parsed.systemPrompt : DEFAULT_SYSTEM,
-				temperature: typeof parsed.temperature === "number" ? parsed.temperature : 1,
-				topK: typeof parsed.topK === "number" ? parsed.topK : 3,
-			};
-		}
-	} catch {
-		/* ignore */
-	}
-	return { systemPrompt: DEFAULT_SYSTEM, temperature: 1, topK: 3 };
-}
-
-function saveSettings(): void {
-	try {
-		localStorage.setItem(STORAGE_SETTINGS, JSON.stringify(state.settings));
-	} catch {
-		/* ignore */
-	}
-}
-
-function loadConversations(): Conversation[] {
-	try {
-		const raw = localStorage.getItem(STORAGE_CONVOS);
-		if (raw) return JSON.parse(raw) as Conversation[];
-	} catch {
-		/* ignore */
-	}
-	return [];
-}
-
-function saveConversations(): void {
-	try {
-		localStorage.setItem(STORAGE_CONVOS, JSON.stringify(state.conversations));
-	} catch {
-		/* ignore */
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Conversation helpers
-// ---------------------------------------------------------------------------
-
-function currentConversation(): Conversation | null {
-	return state.conversations.find((c) => c.id === state.currentId) ?? null;
-}
-
-function createConversation(): Conversation {
-	const conv: Conversation = {
-		id: uid(),
-		title: "New chat",
-		messages: [],
-		createdAt: Date.now(),
-		updatedAt: Date.now(),
-	};
-	state.conversations.unshift(conv);
-	state.currentId = conv.id;
-	saveConversations();
-	return conv;
-}
+// The agent never touches the DOM; these hooks wire its notifications to the
+// UI (function declarations below are hoisted, so forward references are fine).
+const agent = new ChatAgent({
+	settings: () => state.settings,
+	hooks: {
+		onAvailabilityChange: () => {
+			updateModelStatus();
+			updateComposer();
+			updateEmptyStateNotice();
+		},
+		onDownloadStart: () => showDownloadBanner(),
+		onDownloadProgress: (fraction) => setDownloadProgress(fraction),
+		onDownloadEnd: () => hideDownloadBanner(),
+		onContextChange: () => updateContextPill(),
+		onCompactingChange: () => {
+			updateComposer();
+			updateContextPill();
+		},
+		onCompactStatus: (message, autoHideMs) => showCompactStatus(message, autoHideMs),
+	},
+});
 
 function deleteConversation(id: string): void {
-	const idx = state.conversations.findIndex((c) => c.id === id);
-	if (idx === -1) return;
-	state.conversations.splice(idx, 1);
-	destroySession(id);
-	if (state.currentId === id) {
-		state.currentId = state.conversations[0]?.id ?? null;
-		if (!state.currentId) createConversation();
-	}
-	saveConversations();
-}
-
-function destroySession(id: string): void {
-	const session = sessions.get(id);
-	if (!session) return;
-	sessions.delete(id);
-	try {
-		session.destroy();
-	} catch {
-		/* ignore */
-	}
-}
-
-// Mark a session as most-recently-used (Map preserves insertion order, so
-// delete + re-set moves it to the end).
-function touchSession(id: string): void {
-	const session = sessions.get(id);
-	if (!session) return;
-	sessions.delete(id);
-	sessions.set(id, session);
-}
-
-// Evict least-recently-used idle sessions when we exceed the cap. Safe to call
-// during sendMessage: generation is never in-flight here (sendMessage is gated
-// on !state.isGenerating), so every session in the map is idle.
-function evictIdleSessions(): void {
-	while (sessions.size > MAX_SESSIONS) {
-		const oldestId = sessions.keys().next().value;
-		if (!oldestId) break;
-		destroySession(oldestId);
-	}
-}
-
-function invalidateSessions(): void {
-	for (const id of [...sessions.keys()]) destroySession(id);
-	updateContextPill();
+	agent.destroySession(id);
+	store.remove(id);
 }
 
 // ---------------------------------------------------------------------------
@@ -239,332 +87,6 @@ function renderMarkdown(text: string): string {
 		return sanitizeHtml(marked.parse(text, { async: false }) as string);
 	} catch {
 		return escapeHtml(text);
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Model / sessions
-// ---------------------------------------------------------------------------
-
-function buildInitialPrompts(
-	conv: Conversation,
-	excludeLastN = 0,
-): { role: "system" | "user" | "assistant"; content: string }[] {
-	const msgs: { role: "system" | "user" | "assistant"; content: string }[] = [];
-	const sys = state.settings.systemPrompt.trim();
-	if (sys) msgs.push({ role: "system", content: sys });
-	// Compacted summaries replace the oldest turns; they are never evicted at
-	// runtime, so they stay permanently anchored in context.
-	const rawStart = conv.compaction?.upTo ?? 0;
-	const start = Math.min(rawStart, conv.messages.length);
-	if (conv.compaction) {
-		for (const p of conv.compaction.prompts) msgs.push({ role: p.role, content: p.content });
-	}
-	const end = Math.max(start, conv.messages.length - excludeLastN);
-	for (let i = start; i < end; i++) msgs.push({ role: conv.messages[i].role, content: conv.messages[i].content });
-	return msgs;
-}
-
-async function ensureSession(conv: Conversation, excludeLastN = 0): Promise<LanguageModel> {
-	const existing = sessions.get(conv.id);
-	if (existing) {
-		touchSession(conv.id);
-		return existing;
-	}
-	return createSessionFor(conv, buildInitialPrompts(conv, excludeLastN));
-}
-
-// Shared session creation: download monitor, sampling params, availability
-// bookkeeping, LRU eviction, and the context-overflow early-warning handler.
-async function createSessionFor(
-	conv: Conversation,
-	initialPrompts: { role: "system" | "user" | "assistant"; content: string }[],
-): Promise<LanguageModel> {
-	const options: Record<string, unknown> = {
-		initialPrompts,
-		monitor: (m: CreateMonitor) => {
-			m.addEventListener("downloadprogress", (e: ProgressEvent) => {
-				const loaded = typeof e.loaded === "number" ? e.loaded : 0;
-				setDownloadProgress(loaded);
-			});
-		},
-	};
-	if (state.paramSupport && state.params) {
-		options.temperature = state.settings.temperature;
-		options.topK = state.settings.topK;
-	}
-
-	const needsDownload = state.availability === "downloadable" || state.availability === "downloading";
-	if (needsDownload) {
-		state.availability = "downloading";
-		updateModelStatus();
-		showDownloadBanner();
-	}
-
-	try {
-		const session = await LanguageModel.create(options as LanguageModelCreateOptions);
-		sessions.set(conv.id, session);
-		session.oncontextoverflow = onContextOverflow;
-		if (state.availability !== "available") {
-			state.availability = "available";
-			updateModelStatus();
-		}
-		hideDownloadBanner();
-		evictIdleSessions();
-		updateContextPill();
-		return session;
-	} catch (err) {
-		hideDownloadBanner();
-		throw err;
-	}
-}
-
-// The browser fires this when it starts evicting oldest message pairs to fit
-// an incoming prompt. Flag it so we auto-compact as soon as the current
-// response finishes, instead of letting history be silently dropped.
-function onContextOverflow(): void {
-	state.overflowed = true;
-	updateContextPill();
-}
-
-async function refreshAvailability(): Promise<void> {
-	let avail: Availability;
-	try {
-		avail = await LanguageModel.availability();
-	} catch {
-		avail = "unavailable";
-	}
-	state.availability = avail;
-	updateModelStatus();
-	updateComposer();
-	updateEmptyStateNotice();
-}
-
-// ---------------------------------------------------------------------------
-// Session compaction (Summarizer API + Language Detector API)
-// ---------------------------------------------------------------------------
-
-async function detectCompactionSupport(): Promise<void> {
-	try {
-		state.supportsSummarizer = typeof Summarizer !== "undefined";
-	} catch {
-		state.supportsSummarizer = false;
-	}
-	try {
-		state.supportsLanguageDetector = typeof LanguageDetector !== "undefined";
-	} catch {
-		state.supportsLanguageDetector = false;
-	}
-}
-
-async function ensureLanguageDetector(): Promise<LanguageDetector | null> {
-	if (!state.supportsLanguageDetector) return null;
-	if (languageDetector) return languageDetector;
-	try {
-		languageDetector = await LanguageDetector.create();
-		return languageDetector;
-	} catch {
-		return null;
-	}
-}
-
-async function detectLanguage(text: string): Promise<string> {
-	const detector = await ensureLanguageDetector();
-	if (!detector) return navigator.language;
-	try {
-		const results = await detector.detect(text);
-		if (results.length > 0 && (results[0].confidence ?? 0) >= 0.7) {
-			return results[0].detectedLanguage ?? navigator.language;
-		}
-	} catch {
-		/* ignore */
-	}
-	return navigator.language;
-}
-
-function looksLikeMarkdown(text: string): boolean {
-	return /(?:^#{1,6} |^[-*+] |\d+\. |\*\*|__|\[.+?\]\(|^> |^```)/m.test(text);
-}
-
-type TextSegment = { type: "prose" | "code"; content: string };
-
-// Split a message into alternating prose and fenced-code segments so code
-// blocks pass through compaction untouched while prose is summarized.
-function splitByCodeFences(text: string): TextSegment[] {
-	const parts: TextSegment[] = [];
-	const re = /^```[^\n]*\n[\s\S]*?^```[ \t]*$/gm;
-	let lastIndex = 0;
-	let match: RegExpExecArray | null;
-	while ((match = re.exec(text)) !== null) {
-		if (match.index > lastIndex) parts.push({ type: "prose", content: text.slice(lastIndex, match.index) });
-		parts.push({ type: "code", content: match[0] });
-		lastIndex = match.index + match[0].length;
-	}
-	if (lastIndex < text.length) parts.push({ type: "prose", content: text.slice(lastIndex) });
-	return parts;
-}
-
-// Cache summarizers per format+lang. Prefer the smaller, faster model and
-// fall back to the default if it doesn't support the detected language.
-async function getSummarizer(format: SummarizerFormat, lang: string): Promise<Summarizer | null> {
-	const key = `${format}:${lang}`;
-	const cached = summarizers.get(key);
-	if (cached) return cached;
-
-	const baseOptions = {
-		type: "tldr" as const,
-		format,
-		length: "short" as const,
-		expectedInputLanguages: [lang],
-		expectedContextLanguages: [lang],
-		outputLanguage: lang,
-	};
-
-	let options: SummarizerCreateCoreOptions = { ...baseOptions, preference: "speed" };
-	let avail: Availability;
-	try {
-		avail = await Summarizer.availability(options);
-	} catch {
-		avail = "unavailable";
-	}
-	if (avail === "unavailable") {
-		options = { ...baseOptions, preference: "auto" };
-		try {
-			avail = await Summarizer.availability(options);
-		} catch {
-			avail = "unavailable";
-		}
-	}
-	// Only compact when the summarizer model is already downloaded; never
-	// trigger a surprise download mid-conversation.
-	if (avail !== "available") return null;
-
-	const summarizer = await Summarizer.create(options);
-	summarizers.set(key, summarizer);
-	return summarizer;
-}
-
-async function summarizeOne(msg: ChatMessage): Promise<{ role: "user" | "assistant"; content: string }> {
-	const lang = await detectLanguage(msg.content);
-	const parts = splitByCodeFences(msg.content);
-	let result = "";
-	for (const part of parts) {
-		if (part.type === "code") {
-			result += part.content;
-			continue;
-		}
-		const trimmed = part.content.trim();
-		if (!trimmed) {
-			result += part.content;
-			continue;
-		}
-		try {
-			const summarizer = await getSummarizer(looksLikeMarkdown(trimmed) ? "markdown" : "plain-text", lang);
-			if (!summarizer) {
-				result += part.content;
-				continue;
-			}
-			const summary = (
-				await summarizer.summarize(trimmed, {
-					context: `This is a ${msg.role} turn from a chat conversation. Preserve its key meaning as concisely as possible.`,
-				})
-			).trim();
-			result += summary && summary.length < trimmed.length ? summary : part.content;
-		} catch {
-			result += part.content;
-		}
-	}
-	const compacted = result.trim();
-	return { role: msg.role, content: compacted || msg.content };
-}
-
-// Summarize only the turns not already covered by a previous compaction, then
-// merge with the existing summaries.
-async function summarizeMessages(conv: Conversation): Promise<{ role: "user" | "assistant"; content: string }[]> {
-	const start = conv.compaction?.upTo ?? 0;
-	const out: { role: "user" | "assistant"; content: string }[] = conv.compaction ? [...conv.compaction.prompts] : [];
-	for (let i = start; i < conv.messages.length; i++) {
-		const msg = conv.messages[i];
-		if (msg.error || !msg.content.trim()) {
-			out.push({ role: msg.role, content: msg.content });
-			continue;
-		}
-		out.push(await summarizeOne(msg));
-	}
-	return out;
-}
-
-async function compactConversation(conv: Conversation): Promise<boolean> {
-	if (state.isCompacting || !state.supportsSummarizer) return false;
-	if (conv.messages.length === 0) return false;
-
-	state.isCompacting = true;
-	updateComposer();
-	updateContextPill();
-	showCompactStatus("Summarizing older messages to free up context…");
-	try {
-		const prompts = await summarizeMessages(conv);
-		conv.compaction = { upTo: conv.messages.length, prompts };
-		conv.updatedAt = Date.now();
-		saveConversations();
-
-		// Destroy the old session and seed a fresh one anchored on the summaries.
-		destroySession(conv.id);
-		try {
-			await createSessionFor(conv, buildInitialPrompts(conv, 0));
-			showCompactStatus("Context compacted — conversation continues.", 2500);
-			return true;
-		} catch {
-			// New session creation failed (e.g. summaries still too large). Roll
-			// back; the next message rebuilds lazily from the full history.
-			conv.compaction = undefined;
-			saveConversations();
-			showCompactStatus("Couldn't compact context right now.", 3000);
-			return false;
-		}
-	} catch {
-		showCompactStatus("Couldn't compact context right now.", 3000);
-		return false;
-	} finally {
-		state.isCompacting = false;
-		state.overflowed = false;
-		updateContextPill();
-		updateComposer();
-	}
-}
-
-// Called after each response. Auto-compacts when usage crosses the threshold
-// or when the browser signalled an overflow during the turn.
-async function maybeAutoCompact(conv: Conversation, session: LanguageModel): Promise<void> {
-	if (state.overflowed && !state.supportsSummarizer) {
-		showCompactStatus("Context window full — older messages may be dropped.", 4000);
-		state.overflowed = false;
-		return;
-	}
-	const total = typeof session.contextWindow === "number" ? session.contextWindow : 0;
-	const used = typeof session.contextUsage === "number" ? session.contextUsage : 0;
-	const ratio = total > 0 ? used / total : 0;
-	if (state.overflowed || ratio >= AUTO_COMPACT_THRESHOLD) {
-		await compactConversation(conv);
-	}
-}
-
-function destroySummarizers(): void {
-	for (const [, s] of summarizers) {
-		try {
-			s.destroy();
-		} catch {
-			/* ignore */
-		}
-	}
-	summarizers.clear();
-	if (languageDetector) {
-		try {
-			languageDetector.destroy();
-		} catch {
-			/* ignore */
-		}
-		languageDetector = null;
 	}
 }
 
@@ -628,7 +150,7 @@ function truncate(s: string, n = 48): string {
 
 function renderSidebar(): void {
 	const list = els.conversationList();
-	const convos = state.conversations;
+	const convos = store.list();
 	els.noConvos().classList.toggle("hidden", convos.length > 0);
 
 	list.replaceChildren(
@@ -637,7 +159,7 @@ function renderSidebar(): void {
 			li.className = "group relative";
 			li.dataset.id = conv.id;
 
-			const active = conv.id === state.currentId;
+			const active = conv.id === store.getCurrentId();
 			const btn = document.createElement("button");
 			btn.type = "button";
 			btn.className =
@@ -665,11 +187,11 @@ function renderSidebar(): void {
 }
 
 function renderHeader(): void {
-	const conv = currentConversation();
+	const conv = store.current();
 	els.chatTitle().textContent = conv?.title || "New chat";
 }
 
-function messageActionsHtml(msg: ChatMessage, isLast: boolean): string {
+function messageActionsHtml(msg: TChatMessage, isLast: boolean): string {
 	let html = `<div class="mt-2 flex items-center gap-1">`;
 	html += `<button type="button" class="msg-copy relative flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-zinc-500 transition-colors hover:bg-zinc-950/5 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-200">
 		<span class="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2" aria-hidden="true"></span>
@@ -686,7 +208,7 @@ function messageActionsHtml(msg: ChatMessage, isLast: boolean): string {
 	return html;
 }
 
-function createMessageEl(msg: ChatMessage, isLast: boolean): HTMLLIElement {
+function createMessageEl(msg: TChatMessage, isLast: boolean): HTMLLIElement {
 	const li = document.createElement("li");
 	li.className = "msg-row";
 	li.dataset.id = msg.id;
@@ -723,7 +245,7 @@ function createMessageEl(msg: ChatMessage, isLast: boolean): HTMLLIElement {
 	return li;
 }
 
-function updateMessageContent(li: HTMLElement, msg: ChatMessage): void {
+function updateMessageContent(li: HTMLElement, msg: TChatMessage): void {
 	const content = li.querySelector(".msg-content");
 	if (!content) return;
 
@@ -756,7 +278,7 @@ function updateMessageContent(li: HTMLElement, msg: ChatMessage): void {
 }
 
 function renderMessages(): void {
-	const conv = currentConversation();
+	const conv = store.current();
 	const list = els.messageList();
 	const hasMessages = !!conv && conv.messages.length > 0;
 
@@ -793,13 +315,14 @@ function updateModelStatus(): void {
 	if (!dot || !label) return;
 
 	const dotBase = "size-2 shrink-0 rounded-full ";
-	const map: Record<Availability, { dot: string; text: string }> = {
+	const map: Record<TAvailability, { dot: string; text: string }> = {
 		available: { dot: dotBase + "bg-accent", text: "Ready · Gemini Nano" },
 		downloadable: { dot: dotBase + "bg-zinc-400", text: "Model ready to download" },
 		downloading: { dot: dotBase + "bg-zinc-400 animate-pulse", text: "Downloading model…" },
 		unavailable: { dot: dotBase + "bg-zinc-300 dark:bg-zinc-600", text: "Unavailable in this browser" },
 	};
-	const info = state.availability ? map[state.availability] : { dot: dotBase + "bg-zinc-400", text: "Checking model…" };
+	const availability = agent.availability;
+	const info = availability ? map[availability] : { dot: dotBase + "bg-zinc-400", text: "Checking model…" };
 	dot.className = info.dot;
 	label.textContent = info.text;
 }
@@ -808,7 +331,7 @@ function updateEmptyStateNotice(): void {
 	const notice = els.unavailableNotice();
 	const empty = els.emptyState();
 	if (!notice) return;
-	const show = state.availability === "unavailable";
+	const show = agent.availability === "unavailable";
 	notice.classList.toggle("hidden", !show);
 	empty.classList.toggle("hidden", show);
 }
@@ -862,7 +385,7 @@ function updateContextPill(): void {
 	const text = els.contextText();
 	const bar = els.contextBar();
 
-	if (state.isCompacting) {
+	if (agent.compacting) {
 		pill.classList.remove("hidden");
 		pill.classList.add("flex");
 		bar.style.width = "100%";
@@ -871,12 +394,12 @@ function updateContextPill(): void {
 		return;
 	}
 
-	const conv = currentConversation();
-	const session = conv ? sessions.get(conv.id) : undefined;
-	if (session && typeof session.contextWindow === "number" && session.contextWindow > 0) {
+	const conv = store.current();
+	const info = conv ? agent.contextInfo(conv.id) : null;
+	if (info) {
 		pill.classList.remove("hidden");
 		pill.classList.add("flex");
-		const ratio = Math.min(1, session.contextUsage / session.contextWindow);
+		const ratio = Math.min(1, info.usage / info.window);
 		bar.style.width = `${Math.round(ratio * 100)}%`;
 		bar.className = `block h-full rounded-full ${contextBarColor(ratio)} transition-all duration-300`;
 		text.textContent = `${Math.round(ratio * 100)}%`;
@@ -894,14 +417,16 @@ function updateComposer(): void {
 	const input = els.composerInput();
 	const btn = els.sendBtn();
 	const hasText = input.value.trim().length > 0;
-	const blocked = state.availability === "unavailable" || state.isCompacting;
+	const blocked = agent.availability === "unavailable" || agent.compacting;
 
-	if (state.isGenerating) {
+	// The stop affordance only belongs to the conversation that is actually
+	// generating; in any other chat the composer must never abort it.
+	if (state.isGenerating && state.generatingId === store.getCurrentId()) {
 		btn.disabled = false;
 		els.sendIcon().classList.add("hidden");
 		els.stopIcon().classList.remove("hidden");
 	} else {
-		btn.disabled = blocked || !hasText;
+		btn.disabled = blocked || state.isGenerating || !hasText;
 		els.sendIcon().classList.remove("hidden");
 		els.stopIcon().classList.add("hidden");
 	}
@@ -929,148 +454,109 @@ function scrollToBottom(force = false): void {
 
 async function sendMessage(text: string): Promise<void> {
 	const trimmed = text.trim();
-	if (!trimmed || state.isGenerating || state.isCompacting) return;
-	if (state.availability === "unavailable") return;
+	if (!trimmed || state.isGenerating || agent.compacting) return;
+	if (agent.availability === "unavailable") return;
 
-	let conv = currentConversation();
-	if (!conv) conv = createConversation();
+	const conv = store.current() ?? store.create();
 
 	// 1. Append the user message + an assistant placeholder and render IMMEDIATELY,
 	// before any async work. Session creation (and possible model download) can
 	// take a while on first use; the user must see their message right away.
-	const userMsg: ChatMessage = { id: uid(), role: "user", content: trimmed };
-	const assistantMsg: ChatMessage = { id: uid(), role: "assistant", content: "", streaming: true };
+	const userMsg: TChatMessage = { id: store.uid(), role: "user", content: trimmed };
+	const assistantMsg: TChatMessage = { id: store.uid(), role: "assistant", content: "", streaming: true };
 	conv.messages.push(userMsg, assistantMsg);
 	const userCount = conv.messages.filter((m) => m.role === "user").length;
 	if (userCount === 1) conv.title = truncate(trimmed);
 	conv.updatedAt = Date.now();
-	saveConversations();
+	store.save();
 
 	state.isGenerating = true;
+	state.generatingId = conv.id;
 	state.abort = new AbortController();
 	updateComposer();
 	renderAll();
 
-	// 2. Ensure a session built from history BEFORE this exchange (exclude the
-	// two messages we just pushed so the new prompt isn't double-counted).
-	let session: LanguageModel;
-	try {
-		session = await ensureSession(conv, 2);
-	} catch (err) {
-		handleSessionError(conv, assistantMsg, err);
+	// Re-query per update: the list is re-rendered when the user switches
+	// conversations, so a captured element could go stale mid-stream.
+	const li = () =>
+		els.messageList().querySelector<HTMLElement>(`[data-id="${assistantMsg.id}"]`) ?? undefined;
+	let lastRender = 0;
+
+	// Runs on the terminal event (done / aborted / error): persist, then refresh
+	// the finished message in place (preserves scroll position) and the chrome.
+	const finalize = () => {
+		assistantMsg.streaming = false;
 		state.isGenerating = false;
+		state.generatingId = null;
 		state.abort = null;
-		saveConversations();
-		renderAll();
+		store.save();
+
+		const doneLi = li();
+		if (doneLi) {
+			if (!conv.messages.includes(assistantMsg)) {
+				doneLi.remove();
+			} else {
+				const aw = doneLi.querySelector(".msg-actions");
+				if (aw) aw.innerHTML = messageActionsHtml(assistantMsg, true);
+				updateMessageContent(doneLi, assistantMsg);
+			}
+		}
+		scrollToBottom();
+		renderSidebar();
+		renderHeader();
 		updateComposer();
-		return;
-	}
+		updateContextPill();
+	};
 
-	// 3. Stream the response.
-	const li = els.messageList().querySelector<HTMLElement>(`[data-id="${assistantMsg.id}"]`);
-	await streamResponse(session, trimmed, assistantMsg, li ?? undefined);
-
-	assistantMsg.streaming = false;
-	state.isGenerating = false;
-	state.abort = null;
-	saveConversations();
-
-	// Refresh the finished assistant message so its Regenerate action appears,
-	// without rebuilding the whole list (preserves scroll position).
-	const doneLi = els.messageList().querySelector<HTMLElement>(`[data-id="${assistantMsg.id}"]`);
-	if (doneLi) {
-		const aw = doneLi.querySelector(".msg-actions");
-		if (aw) aw.innerHTML = messageActionsHtml(assistantMsg, true);
-		updateMessageContent(doneLi, assistantMsg);
-	}
-
-	renderSidebar();
-	renderHeader();
-	updateComposer();
-	updateContextPill();
-
-	// Auto-compact when the context window is filling up or overflowed during
-	// the turn. The old `session` still holds its final usage reading here.
-	await maybeAutoCompact(conv, session);
-	updateComposer();
-}
-
-async function streamResponse(
-	session: LanguageModel,
-	prompt: string,
-	assistantMsg: ChatMessage,
-	li?: HTMLElement,
-): Promise<void> {
-	try {
-		const stream = session.promptStreaming(prompt, { signal: state.abort?.signal });
-		let acc = "";
-		let lastRender = 0;
-		const reader = stream.getReader();
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			if (value) {
-				// Robust to both delta-style and cumulative-style streams.
-				acc = acc === "" || value.startsWith(acc) ? value : acc + value;
-				assistantMsg.content = acc;
+	// 2. Drive the agent loop. Terminal events always arrive with the agent's
+	// session bookkeeping already settled, so the UI only mirrors them.
+	for await (const event of agent.run(conv, trimmed, state.abort.signal)) {
+		switch (event.type) {
+			case "chunk": {
+				assistantMsg.content = event.content;
 				const now = performance.now();
 				if (now - lastRender > 40) {
 					lastRender = now;
-					if (li) updateMessageContent(li, assistantMsg);
+					const el = li();
+					if (el) updateMessageContent(el, assistantMsg);
 					scrollToBottom();
 				}
+				break;
 			}
+			case "done": {
+				assistantMsg.content = event.content;
+				finalize();
+				break;
+			}
+			case "aborted": {
+				// Keep the partial text; with nothing streamed, drop the placeholder
+				// but keep the user message so they can retry.
+				assistantMsg.content = event.content;
+				if (!event.content) {
+					const idx = conv.messages.indexOf(assistantMsg);
+					if (idx !== -1) conv.messages.splice(idx, 1);
+				}
+				conv.updatedAt = Date.now();
+				finalize();
+				break;
+			}
+			case "error": {
+				assistantMsg.error = true;
+				assistantMsg.content = event.message;
+				conv.updatedAt = Date.now();
+				finalize();
+				break;
+			}
+			case "compacted":
+				// Compaction progress is surfaced through the agent hooks.
+				break;
 		}
-		if (li) updateMessageContent(li, assistantMsg);
-		scrollToBottom();
-	} catch (err) {
-		const e = err as DOMException;
-		if (e?.name === "AbortError") {
-			// Keep whatever was streamed so far; mark done.
-			return;
-		}
-		assistantMsg.error = true;
-		assistantMsg.content = friendlyError(e);
-		if (li) updateMessageContent(li, assistantMsg);
 	}
-}
-
-function friendlyError(e: unknown): string {
-	const err = e as DOMException;
-	if (err?.name === "QuotaExceededError") {
-		return "The conversation exceeded the model's context window. Try starting a new chat.";
-	}
-	if (err?.name === "NotSupportedError") {
-		return "The model couldn't handle this request. Try rephrasing or starting a new chat.";
-	}
-	return err?.message || "Something went wrong while generating a response.";
-}
-
-function handleSessionError(conv: Conversation, placeholder: ChatMessage, err: unknown): void {
-	hideDownloadBanner();
-	const e = err as DOMException;
-
-	// On abort, drop the empty placeholder but keep the user message so they can retry.
-	if (e?.name === "AbortError") {
-		placeholder.streaming = false;
-		const idx = conv.messages.indexOf(placeholder);
-		if (idx !== -1 && !placeholder.content) conv.messages.splice(idx, 1);
-		conv.updatedAt = Date.now();
-		return;
-	}
-
-	// Convert the placeholder into an error bubble.
-	placeholder.streaming = false;
-	placeholder.error = true;
-	placeholder.content =
-		e?.name === "NotSupportedError"
-			? "The on-device model isn't available in this browser. Use a recent Chrome version on a supported device."
-			: friendlyError(e);
-	conv.updatedAt = Date.now();
+	updateComposer();
 }
 
 async function regenerate(): Promise<void> {
-	const conv = currentConversation();
+	const conv = store.current();
 	if (!conv || state.isGenerating) return;
 	// Drop the last user/assistant exchange.
 	let lastUserIdx = -1;
@@ -1087,8 +573,8 @@ async function regenerate(): Promise<void> {
 	// the fresh session rebuilds from the (full) trimmed history.
 	conv.compaction = undefined;
 	// Force a fresh session built from the trimmed history.
-	destroySession(conv.id);
-	saveConversations();
+	agent.destroySession(conv.id);
+	store.save();
 	renderMessages();
 	await sendMessage(text);
 }
@@ -1151,41 +637,22 @@ function closeSettings(): void {
 
 function syncSettingsFields(): void {
 	els.settingSystem().value = state.settings.systemPrompt;
-	if (state.paramSupport && state.params) {
+	const params = agent.modelParams;
+	if (params) {
 		els.paramControls().classList.remove("hidden");
 		els.paramControls().classList.add("flex");
 		const t = els.settingTemperature();
 		t.min = "0";
-		t.max = String(state.params.maxTemperature);
+		t.max = String(params.maxTemperature);
 		t.step = "0.1";
 		t.value = String(state.settings.temperature);
 		els.temperatureValue().textContent = state.settings.temperature.toFixed(1);
 		const k = els.settingTopk();
 		k.min = "1";
-		k.max = String(state.params.maxTopK);
+		k.max = String(params.maxTopK);
 		k.step = "1";
 		k.value = String(state.settings.topK);
 		els.topkValue().textContent = String(state.settings.topK);
-	}
-}
-
-async function detectParamSupport(): Promise<void> {
-	// params() is restricted to extension / origin-trial contexts.
-	try {
-		if (typeof LanguageModel.params === "function") {
-			const p = await LanguageModel.params();
-			if (p && typeof p.defaultTemperature === "number") {
-				state.paramSupport = true;
-				state.params = {
-					defaultTemperature: p.defaultTemperature,
-					maxTemperature: p.maxTemperature ?? 2,
-					defaultTopK: p.defaultTopK ?? 3,
-					maxTopK: p.maxTopK ?? 128,
-				};
-			}
-		}
-	} catch {
-		state.paramSupport = false;
 	}
 }
 
@@ -1196,7 +663,7 @@ async function detectParamSupport(): Promise<void> {
 function wireEvents(): void {
 	// New chat
 	els.newChatBtn().addEventListener("click", () => {
-		createConversation();
+		store.startNew();
 		hideCompactStatus();
 		renderAll();
 		closeSidebar();
@@ -1216,7 +683,7 @@ function wireEvents(): void {
 			renderAll();
 			return;
 		}
-		state.currentId = id;
+		store.setCurrent(id);
 		hideCompactStatus();
 		renderAll();
 		closeSidebar();
@@ -1235,16 +702,17 @@ function wireEvents(): void {
 	els.composerInput().addEventListener("keydown", (e) => {
 		if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
 			e.preventDefault();
-			if (!state.isGenerating && !state.isCompacting) els.composerForm().requestSubmit();
+			if (!state.isGenerating && !agent.compacting) els.composerForm().requestSubmit();
 		}
 	});
 	els.composerForm().addEventListener("submit", (e) => {
 		e.preventDefault();
 		if (state.isGenerating) {
-			abortCurrent();
+			// Stop only applies to the conversation that is generating.
+			if (state.generatingId === store.getCurrentId()) abortCurrent();
 			return;
 		}
-		if (state.isCompacting) return;
+		if (agent.compacting) return;
 		const text = els.composerInput().value;
 		if (!text.trim()) return;
 		els.composerInput().value = "";
@@ -1264,7 +732,7 @@ function wireEvents(): void {
 		const copyBtn = target.closest(".msg-copy") as HTMLElement | null;
 		if (copyBtn) {
 			const li = copyBtn.closest("li");
-			const msg = currentConversation()?.messages.find((m) => m.id === li?.dataset.id);
+			const msg = store.current()?.messages.find((m) => m.id === li?.dataset.id);
 			if (msg) void copyMessage(msg.content, copyBtn);
 			return;
 		}
@@ -1280,26 +748,26 @@ function wireEvents(): void {
 	});
 	els.settingSystem().addEventListener("input", () => {
 		state.settings.systemPrompt = els.settingSystem().value;
-		saveSettings();
-		invalidateSessions();
+		store.saveSettings(state.settings);
+		agent.invalidateSessions();
 	});
 	els.settingTemperature().addEventListener("input", () => {
 		state.settings.temperature = parseFloat(els.settingTemperature().value);
 		els.temperatureValue().textContent = state.settings.temperature.toFixed(1);
-		saveSettings();
-		invalidateSessions();
+		store.saveSettings(state.settings);
+		agent.invalidateSessions();
 	});
 	els.settingTopk().addEventListener("input", () => {
 		state.settings.topK = parseInt(els.settingTopk().value, 10);
 		els.topkValue().textContent = String(state.settings.topK);
-		saveSettings();
-		invalidateSessions();
+		store.saveSettings(state.settings);
+		agent.invalidateSessions();
 	});
 	els.clearAllBtn().addEventListener("click", () => {
-		for (const c of [...state.conversations]) deleteConversation(c.id);
-		destroySummarizers();
-		createConversation();
-		saveConversations();
+		for (const c of [...store.list()]) deleteConversation(c.id);
+		agent.destroySummarizers();
+		store.startNew();
+		store.save();
 		renderAll();
 		closeSettings();
 	});
@@ -1336,12 +804,11 @@ async function copyMessage(text: string, btn: HTMLElement): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export function startApp(): void {
-	state.conversations = loadConversations();
-	if (state.conversations.length === 0) {
-		createConversation();
-	} else {
-		state.currentId = state.conversations[0].id;
-	}
+	store.load();
+	// Always open on a fresh chat — past conversations stay in the sidebar but
+	// are never silently resumed. Landing in an old chat meant the next message
+	// continued that old session, which is exactly the surprise we're avoiding.
+	store.startNew();
 
 	// Restore the desktop sidebar collapse preference before first paint.
 	try {
@@ -1357,9 +824,7 @@ export function startApp(): void {
 	updateComposer();
 
 	void (async () => {
-		await detectCompactionSupport();
-		await detectParamSupport();
+		await agent.boot();
 		syncSettingsFields();
-		await refreshAvailability();
 	})();
 }
