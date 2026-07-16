@@ -316,11 +316,13 @@ function highlightJson(value: unknown): string {
 	while ((m = re.exec(json)) !== null) {
 		if (m.index > last) tokens.push({ t: json.slice(last, m.index), cls: "" });
 		const tok = m[0];
-		let cls = "text-amber-300";
+		// Monochrome highlighting to match the app's design system: dim keys,
+		// bright values, muted literals.
+		let cls = "text-zinc-300";
 		if (tok.startsWith('"')) {
-			cls = /:$/.test(tok) ? "text-sky-300" : "text-emerald-300";
+			cls = /:$/.test(tok) ? "text-zinc-400" : "text-white";
 		} else if (tok === "true" || tok === "false") {
-			cls = "text-fuchsia-300";
+			cls = "text-zinc-200";
 		} else if (tok === "null") {
 			cls = "text-zinc-500";
 		}
@@ -339,7 +341,7 @@ const CODE_PANEL =
 function spinnerHtml(label: string): string {
 	return (
 		`<div class="flex items-center gap-2 py-6 text-sm text-zinc-400 dark:text-zinc-500">` +
-		`<span class="size-4 animate-spin rounded-full border-2 border-zinc-300 border-t-emerald-500 dark:border-zinc-600 dark:border-t-emerald-400"></span>` +
+		`<span class="size-4 animate-spin rounded-full border-2 border-zinc-300 border-t-accent dark:border-zinc-600"></span>` +
 		`${escapeHtml(label)}</div>`
 	);
 }
@@ -363,7 +365,7 @@ function presetBtnClass(active: boolean): string {
 	const base =
 		"relative rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition-colors sm:text-sm";
 	return active
-		? `${base} bg-emerald-600 text-white ring-emerald-600`
+		? `${base} bg-zinc-950/5 text-zinc-900 ring-zinc-950/15 dark:bg-white/10 dark:text-white dark:ring-white/20`
 		: `${base} bg-white text-zinc-600 ring-zinc-950/10 hover:bg-zinc-50 hover:text-zinc-900 dark:bg-white/5 dark:text-zinc-300 dark:ring-white/10 dark:hover:bg-white/10 dark:hover:text-white`;
 }
 
@@ -399,10 +401,10 @@ function setDownloadProgress(fraction: number): void {
 
 function updateModelStatus(): void {
 	const map: Record<TAvailability, { dot: string; text: string }> = {
-		available: { dot: "bg-emerald-500", text: "Ready · Gemini Nano" },
-		downloadable: { dot: "bg-amber-500", text: "Model ready to download" },
-		downloading: { dot: "bg-amber-500 animate-pulse", text: "Downloading model…" },
-		unavailable: { dot: "bg-red-500", text: "Unavailable in this browser" },
+		available: { dot: "bg-accent", text: "Ready · Gemini Nano" },
+		downloadable: { dot: "bg-zinc-400", text: "Model ready to download" },
+		downloading: { dot: "bg-zinc-400 animate-pulse", text: "Downloading model…" },
+		unavailable: { dot: "bg-zinc-300 dark:bg-zinc-600", text: "Unavailable in this browser" },
 	};
 	const availability = agent.availability;
 	const info = availability ? map[availability] : { dot: "bg-zinc-400", text: "Checking model…" };
@@ -431,15 +433,18 @@ function abortCurrent(): void {
 	state.abort?.abort();
 }
 
+// Monochrome status badges: a filled accent pill marks success; everything
+// else stays muted zinc, with the icon and label carrying the meaning.
 function badgeHtml(tone: "ok" | "warn" | "err" | "muted", label: string): string {
 	const map = {
-		ok: "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-emerald-400/20",
-		warn: "bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-400 dark:ring-amber-400/20",
-		err: "bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-500/10 dark:text-red-400 dark:ring-red-400/20",
+		ok: "bg-accent text-accent-fg ring-accent",
+		warn: "bg-zinc-950/5 text-zinc-700 ring-zinc-950/10 dark:bg-white/10 dark:text-zinc-300 dark:ring-white/10",
+		err: "bg-zinc-950/5 text-zinc-700 ring-zinc-950/10 dark:bg-white/10 dark:text-zinc-300 dark:ring-white/10",
 		muted: "bg-zinc-100 text-zinc-500 ring-zinc-950/10 dark:bg-white/5 dark:text-zinc-400 dark:ring-white/10",
 	} as const;
+	const padding = label.includes("<svg") ? "py-0.5 pr-2.5 pl-1.5" : "px-2.5 py-0.5";
 	return (
-		`<span class="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${map[tone]}">${label}</span>`
+		`<span class="inline-flex items-center gap-1 rounded-full ${padding} text-xs font-medium ring-1 ring-inset ${map[tone]}">${label}</span>`
 	);
 }
 
@@ -477,7 +482,7 @@ function renderStructured(): void {
 	if (r.status === "error") {
 		badge.innerHTML = badgeHtml("err", `${icon("exclamation-triangle", "size-3.5")} Error`);
 		setTabsVisible(false);
-		body.innerHTML = `<div class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">${escapeHtml(r.error || "Something went wrong.")}</div>`;
+		body.innerHTML = `<div class="rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-700 dark:bg-white/5 dark:text-zinc-300">${escapeHtml(r.error || "Something went wrong.")}</div>`;
 		return;
 	}
 
@@ -486,7 +491,7 @@ function renderStructured(): void {
 
 	if (r.parseError) {
 		badge.innerHTML = badgeHtml("err", `${icon("exclamation-triangle", "size-3.5")} Not valid JSON`);
-		parsed.innerHTML = `<div class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">${escapeHtml(r.error || "The response could not be parsed as JSON.")}</div>`;
+		parsed.innerHTML = `<div class="rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-700 dark:bg-white/5 dark:text-zinc-300">${escapeHtml(r.error || "The response could not be parsed as JSON.")}</div>`;
 	} else {
 		const issues = r.issues ?? [];
 		const tone = issues.length === 0 ? "ok" : "warn";
@@ -498,10 +503,10 @@ function renderStructured(): void {
 		parsed.innerHTML =
 			`<pre class="${CODE_PANEL}">${highlightJson(r.parsed)}</pre>` +
 			(issues.length
-				? `<ul class="mt-3 space-y-1 text-xs text-amber-700 dark:text-amber-400" role="list">${issues
+				? `<ul class="mt-3 space-y-1 text-xs text-zinc-600 dark:text-zinc-400" role="list">${issues
 						.map(
 							(i) =>
-								`<li class="flex gap-2"><span class="font-mono text-amber-500">${escapeHtml(i.path)}</span><span>${escapeHtml(i.msg)}</span></li>`,
+								`<li class="flex gap-2"><span class="font-mono text-zinc-400 dark:text-zinc-500">${escapeHtml(i.path)}</span><span>${escapeHtml(i.msg)}</span></li>`,
 						)
 						.join("")}</ul>`
 				: "");
@@ -532,7 +537,7 @@ function renderFreeform(): void {
 	if (r.status === "error") {
 		badge.innerHTML = badgeHtml("err", `${icon("exclamation-triangle", "size-3.5")} Error`);
 		latency.textContent = "";
-		body.innerHTML = `<div class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">${escapeHtml(r.error || "Something went wrong.")}</div>`;
+		body.innerHTML = `<div class="rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-700 dark:bg-white/5 dark:text-zinc-300">${escapeHtml(r.error || "Something went wrong.")}</div>`;
 		return;
 	}
 	badge.innerHTML = badgeHtml("muted", "No constraint");
@@ -552,7 +557,7 @@ function applyTab(): void {
 
 function tabBtnClass(active: boolean): string {
 	return active
-		? "border-emerald-500 text-emerald-700 dark:text-emerald-400"
+		? "border-accent text-zinc-900 dark:text-white"
 		: "border-transparent text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200";
 }
 
