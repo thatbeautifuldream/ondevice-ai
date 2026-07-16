@@ -51,6 +51,10 @@ const state = {
 };
 
 const sessions = new Map<string, LanguageModel>();
+// Each live session holds memory and keeps the model loaded. Cap concurrent
+// sessions; least-recently-used idle ones are destroyed and can be rebuilt
+// from stored history on demand (the "restore past session" pattern).
+const MAX_SESSIONS = 3;
 
 // ---------------------------------------------------------------------------
 // Persistence
@@ -129,15 +133,7 @@ function deleteConversation(id: string): void {
 	const idx = state.conversations.findIndex((c) => c.id === id);
 	if (idx === -1) return;
 	state.conversations.splice(idx, 1);
-	const session = sessions.get(id);
-	if (session) {
-		try {
-			session.destroy();
-		} catch {
-			/* ignore */
-		}
-		sessions.delete(id);
-	}
+	destroySession(id);
 	if (state.currentId === id) {
 		state.currentId = state.conversations[0]?.id ?? null;
 		if (!state.currentId) createConversation();
@@ -145,15 +141,39 @@ function deleteConversation(id: string): void {
 	saveConversations();
 }
 
-function invalidateSessions(): void {
-	for (const [, session] of sessions) {
-		try {
-			session.destroy();
-		} catch {
-			/* ignore */
-		}
+function destroySession(id: string): void {
+	const session = sessions.get(id);
+	if (!session) return;
+	sessions.delete(id);
+	try {
+		session.destroy();
+	} catch {
+		/* ignore */
 	}
-	sessions.clear();
+}
+
+// Mark a session as most-recently-used (Map preserves insertion order, so
+// delete + re-set moves it to the end).
+function touchSession(id: string): void {
+	const session = sessions.get(id);
+	if (!session) return;
+	sessions.delete(id);
+	sessions.set(id, session);
+}
+
+// Evict least-recently-used idle sessions when we exceed the cap. Safe to call
+// during sendMessage: generation is never in-flight here (sendMessage is gated
+// on !state.isGenerating), so every session in the map is idle.
+function evictIdleSessions(): void {
+	while (sessions.size > MAX_SESSIONS) {
+		const oldestId = sessions.keys().next().value;
+		if (!oldestId) break;
+		destroySession(oldestId);
+	}
+}
+
+function invalidateSessions(): void {
+	for (const id of [...sessions.keys()]) destroySession(id);
 	updateContextPill();
 }
 
@@ -206,19 +226,26 @@ function renderMarkdown(text: string): string {
 // Model / sessions
 // ---------------------------------------------------------------------------
 
-function buildInitialPrompts(conv: Conversation): { role: "system" | "user" | "assistant"; content: string }[] {
+function buildInitialPrompts(
+	conv: Conversation,
+	excludeLastN = 0,
+): { role: "system" | "user" | "assistant"; content: string }[] {
 	const msgs: { role: "system" | "user" | "assistant"; content: string }[] = [];
 	const sys = state.settings.systemPrompt.trim();
 	if (sys) msgs.push({ role: "system", content: sys });
-	for (const m of conv.messages) msgs.push({ role: m.role, content: m.content });
+	const end = Math.max(0, conv.messages.length - excludeLastN);
+	for (let i = 0; i < end; i++) msgs.push({ role: conv.messages[i].role, content: conv.messages[i].content });
 	return msgs;
 }
 
-async function ensureSession(conv: Conversation): Promise<LanguageModel> {
+async function ensureSession(conv: Conversation, excludeLastN = 0): Promise<LanguageModel> {
 	const existing = sessions.get(conv.id);
-	if (existing) return existing;
+	if (existing) {
+		touchSession(conv.id);
+		return existing;
+	}
 
-	const initialPrompts = buildInitialPrompts(conv);
+	const initialPrompts = buildInitialPrompts(conv, excludeLastN);
 	const options: Record<string, unknown> = {
 		initialPrompts,
 		monitor: (m: CreateMonitor) => {
@@ -249,6 +276,7 @@ async function ensureSession(conv: Conversation): Promise<LanguageModel> {
 			updateModelStatus();
 		}
 		hideDownloadBanner();
+		evictIdleSessions();
 		updateContextPill();
 		return session;
 	} catch (err) {
@@ -598,16 +626,9 @@ async function sendMessage(text: string): Promise<void> {
 	let conv = currentConversation();
 	if (!conv) conv = createConversation();
 
-	// 1. Ensure a session built from existing history (before adding the new exchange).
-	let session: LanguageModel;
-	try {
-		session = await ensureSession(conv);
-	} catch (err) {
-		handleSessionError(conv, err);
-		return;
-	}
-
-	// 2. Append the user message + an assistant placeholder.
+	// 1. Append the user message + an assistant placeholder and render IMMEDIATELY,
+	// before any async work. Session creation (and possible model download) can
+	// take a while on first use; the user must see their message right away.
 	const userMsg: ChatMessage = { id: uid(), role: "user", content: trimmed };
 	const assistantMsg: ChatMessage = { id: uid(), role: "assistant", content: "", streaming: true };
 	conv.messages.push(userMsg, assistantMsg);
@@ -616,13 +637,27 @@ async function sendMessage(text: string): Promise<void> {
 	conv.updatedAt = Date.now();
 	saveConversations();
 
-	renderAll();
-
-	// 3. Stream the response.
 	state.isGenerating = true;
 	state.abort = new AbortController();
 	updateComposer();
+	renderAll();
 
+	// 2. Ensure a session built from history BEFORE this exchange (exclude the
+	// two messages we just pushed so the new prompt isn't double-counted).
+	let session: LanguageModel;
+	try {
+		session = await ensureSession(conv, 2);
+	} catch (err) {
+		handleSessionError(conv, assistantMsg, err);
+		state.isGenerating = false;
+		state.abort = null;
+		saveConversations();
+		renderAll();
+		updateComposer();
+		return;
+	}
+
+	// 3. Stream the response.
 	const li = els.messageList().querySelector<HTMLElement>(`[data-id="${assistantMsg.id}"]`);
 	await streamResponse(session, trimmed, assistantMsg, li ?? undefined);
 
@@ -697,26 +732,27 @@ function friendlyError(e: unknown): string {
 	return err?.message || "Something went wrong while generating a response.";
 }
 
-function handleSessionError(conv: Conversation, err: unknown): void {
+function handleSessionError(conv: Conversation, placeholder: ChatMessage, err: unknown): void {
 	hideDownloadBanner();
 	const e = err as DOMException;
-	const isAbort = e?.name === "AbortError";
 
-	// Surface a system-style message in the conversation if there is content, else as a notice.
-	if (isAbort) return;
-	const notice: ChatMessage = {
-		id: uid(),
-		role: "assistant",
-		content:
-			e?.name === "NotSupportedError"
-				? "The on-device model isn't available in this browser. Use a recent Chrome version on a supported device."
-				: friendlyError(e),
-		error: true,
-	};
-	conv.messages.push(notice);
+	// On abort, drop the empty placeholder but keep the user message so they can retry.
+	if (e?.name === "AbortError") {
+		placeholder.streaming = false;
+		const idx = conv.messages.indexOf(placeholder);
+		if (idx !== -1 && !placeholder.content) conv.messages.splice(idx, 1);
+		conv.updatedAt = Date.now();
+		return;
+	}
+
+	// Convert the placeholder into an error bubble.
+	placeholder.streaming = false;
+	placeholder.error = true;
+	placeholder.content =
+		e?.name === "NotSupportedError"
+			? "The on-device model isn't available in this browser. Use a recent Chrome version on a supported device."
+			: friendlyError(e);
 	conv.updatedAt = Date.now();
-	saveConversations();
-	renderAll();
 }
 
 async function regenerate(): Promise<void> {
@@ -734,15 +770,7 @@ async function regenerate(): Promise<void> {
 	const text = conv.messages[lastUserIdx].content;
 	conv.messages.splice(lastUserIdx);
 	// Force a fresh session built from the trimmed history.
-	const session = sessions.get(conv.id);
-	if (session) {
-		try {
-			session.destroy();
-		} catch {
-			/* ignore */
-		}
-		sessions.delete(conv.id);
-	}
+	destroySession(conv.id);
 	saveConversations();
 	renderMessages();
 	await sendMessage(text);
