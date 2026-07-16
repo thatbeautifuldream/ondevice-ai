@@ -36,11 +36,11 @@ const SNIPPET = [
 	'<span class="text-zinc-400">const</span> data = <span class="text-white">JSON</span>.<span class="text-white">parse</span>(result); <span class="text-zinc-500">// &rarr; true</span>',
 ].join("\n");
 
-const MODEL_STATUS: Record<TAvailability, { dot: string; text: string }> = {
-	available: { dot: "bg-accent", text: "Ready · Gemini Nano" },
-	downloadable: { dot: "bg-zinc-400", text: "Model ready to download" },
-	downloading: { dot: "bg-zinc-400 animate-pulse", text: "Downloading model…" },
-	unavailable: { dot: "bg-zinc-300 dark:bg-zinc-600", text: "Unavailable in this browser" },
+const MODEL_STATUS: Record<TAvailability, { dot: string; text: string; short: string }> = {
+	available: { dot: "bg-accent", text: "Ready · Gemini Nano", short: "Ready" },
+	downloadable: { dot: "bg-zinc-400", text: "Model ready to download", short: "Downloadable" },
+	downloading: { dot: "bg-zinc-400 animate-pulse", text: "Downloading model…", short: "Downloading…" },
+	unavailable: { dot: "bg-zinc-300 dark:bg-zinc-600", text: "Unavailable in this browser", short: "Unavailable" },
 };
 
 // Monochrome status badges: a filled accent pill marks success; everything
@@ -248,7 +248,9 @@ export default function PlaygroundApp() {
 		}
 	};
 
-	const status = availability ? MODEL_STATUS[availability] : { dot: "bg-zinc-400", text: "Checking model…" };
+	const status = availability
+		? MODEL_STATUS[availability]
+		: { dot: "bg-zinc-400", text: "Checking model…", short: "Checking…" };
 	const unavailable = availability === "unavailable";
 	const blocked = unavailable;
 	const downloadPct = Math.round(Math.max(0, Math.min(1, downloadProgress)) * 100);
@@ -268,23 +270,24 @@ export default function PlaygroundApp() {
 	return (
 		<div className="min-h-dvh">
 			<header className="sticky top-0 z-30 border-b border-zinc-950/5 bg-white/80 backdrop-blur dark:border-white/10 dark:bg-zinc-950/80">
-				<div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:px-6">
+				<div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 sm:gap-3 sm:px-6">
 					<a
 						href="/"
-						className="relative flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-950/5 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/10 dark:hover:text-white"
+						className="relative flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-950/5 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/10 dark:hover:text-white"
 					>
 						<span className="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2" aria-hidden="true"></span>
-						<Icon name="arrow-left" className="size-4" />
+						<Icon name="arrow-left" className="size-4 shrink-0" />
 						Chat
 					</a>
-					<span className="h-4 w-px bg-zinc-950/10 dark:bg-white/10" aria-hidden="true"></span>
-					<span className="text-accent">
+					<span className="h-4 w-px shrink-0 bg-zinc-950/10 dark:bg-white/10" aria-hidden="true"></span>
+					<span className="hidden shrink-0 text-accent sm:inline">
 						<Icon name="sparkles" className="size-4" />
 					</span>
-					<span className="text-sm font-semibold tracking-tight">Structured Output</span>
-					<div className="ml-auto flex items-center gap-2 rounded-full bg-zinc-100 px-2.5 py-1 text-xs text-zinc-500 dark:bg-white/5 dark:text-zinc-400">
+					<span className="min-w-0 truncate text-sm font-semibold tracking-tight">Structured Output</span>
+					<div className="ml-auto flex shrink-0 items-center gap-2 rounded-full bg-zinc-100 px-2.5 py-1 text-xs text-zinc-500 dark:bg-white/5 dark:text-zinc-400">
 						<span className={`size-2 shrink-0 rounded-full ${status.dot}`}></span>
-						<span className="truncate">{status.text}</span>
+						<span className="truncate sm:hidden">{status.short}</span>
+						<span className="hidden truncate sm:inline">{status.text}</span>
 					</div>
 				</div>
 			</header>
@@ -310,7 +313,7 @@ export default function PlaygroundApp() {
 					<code className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[0.8125em] text-zinc-700 dark:bg-white/10 dark:text-zinc-300">
 						responseConstraint
 					</code>{" "}
-					option and the on-device model returns a string you can <em>parse</em> with confidence — no regex rescue
+					option and the on-device model returns a string you can <em>parse</em> with confidence, no regex rescue
 					required.
 				</p>
 
@@ -418,7 +421,7 @@ export default function PlaygroundApp() {
 						></textarea>
 						<p className="mt-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-300">{schemaError}</p>
 						<p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
-							Edit the schema freely — the response is validated against it on the client.
+							Edit the schema freely. The response is validated against it on the client.
 						</p>
 					</section>
 
@@ -640,7 +643,7 @@ function FreeformCard({ result: r, streamingText }: { result: TFreeformResult; s
 				{r.status === "idle" && (
 					<p className="py-6 text-sm text-zinc-400 dark:text-zinc-500">
 						Run <span className="font-medium text-zinc-600 dark:text-zinc-300">Compare without constraint</span> to see
-						the model's free-form reply — often chatty and hard to parse.
+						the model's free-form reply, which is often chatty and hard to parse.
 					</p>
 				)}
 				{r.status === "running" &&
