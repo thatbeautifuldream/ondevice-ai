@@ -2,14 +2,14 @@
 import Icon from "./Icon.astro";
 ---
 
-<header class="flex h-14 shrink-0 items-center gap-2 border-b border-zinc-950/5 px-3 sm:px-4 dark:border-white/10">
+<header class="flex h-14 shrink-0 items-center gap-2 px-3 sm:px-4">
 	<button
 		type="button"
 		id="menu-btn"
-		class="relative flex size-9 items-center justify-center rounded-md text-zinc-600 hover:bg-zinc-950/5 hover:text-zinc-900 lg:hidden dark:text-zinc-300 dark:hover:bg-white/10 dark:hover:text-white"
-		aria-label="Open conversations"
+		class="relative flex size-9 items-center justify-center rounded-md text-zinc-600 hover:bg-zinc-950/5 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/10 dark:hover:text-white"
+		aria-label="Toggle conversations"
 	>
-		<span class="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2 lg:hidden" aria-hidden="true"></span>
+		<span class="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2" aria-hidden="true"></span>
 		<Icon name="bars-3" />
 	</button>
 

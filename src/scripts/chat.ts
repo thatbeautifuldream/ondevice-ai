@@ -43,6 +43,7 @@ type Availability = "unavailable" | "downloadable" | "downloading" | "available"
 
 const STORAGE_CONVOS = "oda.conversations.v1";
 const STORAGE_SETTINGS = "oda.settings.v1";
+const STORAGE_SIDEBAR = "oda.sidebar.v1";
 
 const DEFAULT_SYSTEM =
 	"You are a helpful, friendly assistant running entirely on the user's device. Keep responses concise and clear. Use Markdown when it helps readability.";
@@ -1109,6 +1110,33 @@ function closeSidebar(): void {
 	els.backdrop().classList.add("hidden");
 }
 
+// Desktop collapse (Cmd/Ctrl+B). On lg+ screens the sidebar animates its
+// width to zero instead of acting as a mobile drawer.
+function isDesktop(): boolean {
+	return window.matchMedia("(min-width: 1024px)").matches;
+}
+function sidebarCollapsed(): boolean {
+	return els.sidebar().dataset.collapsed !== undefined;
+}
+function setSidebarCollapsed(collapsed: boolean): void {
+	if (collapsed) els.sidebar().dataset.collapsed = "";
+	else delete els.sidebar().dataset.collapsed;
+	try {
+		localStorage.setItem(STORAGE_SIDEBAR, collapsed ? "1" : "0");
+	} catch {
+		/* ignore */
+	}
+}
+function toggleSidebar(): void {
+	if (isDesktop()) {
+		setSidebarCollapsed(!sidebarCollapsed());
+	} else if (els.sidebar().dataset.open !== undefined) {
+		closeSidebar();
+	} else {
+		openSidebar();
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Settings
 // ---------------------------------------------------------------------------
@@ -1194,8 +1222,8 @@ function wireEvents(): void {
 		closeSidebar();
 	});
 
-	// Mobile drawer
-	els.menuBtn().addEventListener("click", openSidebar);
+	// Sidebar drawer (mobile) + collapse (desktop)
+	els.menuBtn().addEventListener("click", toggleSidebar);
 	els.sidebarClose().addEventListener("click", closeSidebar);
 	els.backdrop().addEventListener("click", closeSidebar);
 
@@ -1276,8 +1304,13 @@ function wireEvents(): void {
 		closeSettings();
 	});
 
-	// Keyboard: Esc closes drawer when open
+	// Keyboard: Cmd/Ctrl+B toggles the sidebar, Esc closes the mobile drawer
 	document.addEventListener("keydown", (e) => {
+		if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "b") {
+			e.preventDefault();
+			toggleSidebar();
+			return;
+		}
 		if (e.key === "Escape" && els.sidebar().dataset.open !== undefined) closeSidebar();
 	});
 }
@@ -1308,6 +1341,13 @@ export function startApp(): void {
 		createConversation();
 	} else {
 		state.currentId = state.conversations[0].id;
+	}
+
+	// Restore the desktop sidebar collapse preference before first paint.
+	try {
+		if (localStorage.getItem(STORAGE_SIDEBAR) === "1") setSidebarCollapsed(true);
+	} catch {
+		/* ignore */
 	}
 
 	syncSettingsFields();

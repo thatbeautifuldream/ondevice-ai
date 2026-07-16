@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* transitions.dev — Card resize tokens (sidebar collapse tween). */
+:root {
+	--resize-dur: 300ms;
+	--resize-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 /* Monochrome accent tokens — single source of truth for the app's accent color.
    These swap automatically with prefers-color-scheme, so utilities like
    bg-accent / text-accent / ring-accent need no dark: variant. */
