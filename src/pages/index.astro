@@ -5,6 +5,7 @@ import ChatHeader from "../components/ChatHeader.astro";
 import EmptyState from "../components/EmptyState.astro";
 import Composer from "../components/Composer.astro";
 import SettingsDialog from "../components/SettingsDialog.astro";
+import UnavailableNotice from "../components/UnavailableNotice.astro";
 import Icon from "../components/Icon.astro";
 ---
 
@@ -16,21 +17,7 @@ import Icon from "../components/Icon.astro";
 			<ChatHeader />
 
 			<div id="messages-scroll" class="scrollbar-thin flex flex-1 flex-col overflow-y-auto">
-				<div
-					id="unavailable-notice"
-					class="mx-auto hidden w-full max-w-md px-4 py-16"
-				>
-					<div class="flex flex-col items-center text-center">
-						<div class="flex size-12 items-center justify-center text-amber-500">
-							<Icon name="exclamation-triangle" class="size-7" />
-						</div>
-						<h2 class="mt-4 text-lg font-semibold tracking-tight">On-device AI isn't available</h2>
-						<p class="mt-2 text-sm text-pretty text-zinc-500 dark:text-zinc-400">
-							This app needs Chrome's built-in Prompt API. Use a recent Chrome desktop build on a supported
-							device and enable the AI feature in <span class="font-medium">Chrome Settings</span>.
-						</p>
-					</div>
-				</div>
+				<UnavailableNotice />
 
 				<div id="empty-state" class="grid min-h-full place-items-center">
 					<EmptyState />

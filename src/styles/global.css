@@ -7,6 +7,12 @@
 	--font-sans--font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01", "ss03";
 }
 
+/* Apply a squircle curve to every rounded corner in the app.
+   corner-shape modifies the corner curve; border-radius (from rounded-* classes) sets its extent. */
+* {
+	corner-shape: squircle;
+}
+
 /* Markdown rendering for assistant messages. Follows the prose-content guideline:
    a hand-written .prose-chat class instead of @tailwindcss/typography. */
 @utility prose-chat {
