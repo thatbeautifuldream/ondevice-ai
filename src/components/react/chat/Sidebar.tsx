@@ -50,7 +50,7 @@ export function Sidebar({
 						<span className="text-accent">
 							<Icon name="sparkles" className="size-4" />
 						</span>
-						<span className="text-sm font-semibold tracking-tight">Chat</span>
+						<span className="text-sm font-semibold tracking-tight">ApnaAI</span>
 						<button
 							type="button"
 							onClick={onClose}

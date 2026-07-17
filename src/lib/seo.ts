@@ -1,7 +1,7 @@
 export const siteConfig = {
-	name: "Chat",
-	title: "Chat - Private, on-device AI",
-	tagline: "Private, on-device AI chat",
+	name: "ApnaAI",
+	title: "ApnaAI - Private, on-device AI",
+	tagline: "Private, on-device AI chat & tools",
 	description:
 		"A private chat app powered by Chrome's built-in Prompt API and Gemini Nano. Everything runs locally on your device.",
 	url: "https://chat.milind.app",
@@ -21,7 +21,7 @@ export const siteConfig = {
 export const pageSeo = {
 	writingTools: {
 		path: "/writing-tools",
-		title: "Writing Tools Playground - Chat",
+		title: "Writing Tools Playground - ApnaAI",
 		ogTitle: "Writing Tools Playground",
 		description:
 			"Draft, rework, and proofread text with Chrome's on-device Writer, Rewriter, and Proofreader APIs. Tone and length controls, streamed output, inline corrections.",
@@ -39,7 +39,7 @@ export const pageSeo = {
 	},
 	translate: {
 		path: "/translate",
-		title: "Translate Playground - Chat",
+		title: "Translate Playground - ApnaAI",
 		ogTitle: "Translate Playground",
 		description:
 			"Type in any language and Chrome's on-device Language Detector API identifies it while the Translator API streams the translation. Nothing leaves your device.",
@@ -56,7 +56,7 @@ export const pageSeo = {
 	},
 	structuredOutput: {
 		path: "/structured-output",
-		title: "Structured Output Playground - Chat",
+		title: "Structured Output Playground - ApnaAI",
 		ogTitle: "Structured Output Playground",
 		description:
 			"Experiment with the Prompt API responseConstraint option to force Chrome's on-device model to reply with JSON that matches a JSON Schema.",
