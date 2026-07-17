@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { TARGET_LANGUAGES, TranslateEngine, languageName } from "../../../lib/translate";
 import type { TDetection } from "../../../lib/translate";
 import { Icon } from "../Icon";
+import { MarkdownOutput } from "../MarkdownOutput";
 
 type TRunStatus = "idle" | "detecting" | "translating" | "done" | "error";
 
@@ -511,7 +512,13 @@ export default function TranslateApp() {
 							)}
 
 							{(status === "translating" || status === "done") && (
-								<p className="text-base/7 whitespace-pre-wrap text-zinc-900 sm:text-lg/8 dark:text-zinc-100">{output}</p>
+								<div className="scrollbar-thin max-h-[28rem] overflow-y-auto">
+									<MarkdownOutput
+										content={output}
+										animating={status === "translating"}
+										className="text-base/7 text-zinc-900 sm:text-lg/8 dark:text-zinc-100"
+									/>
+								</div>
 							)}
 
 							{status === "idle" && blocker === "none" && !downloading && (

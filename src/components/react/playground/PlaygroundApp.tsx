@@ -4,6 +4,7 @@ import type { TAvailability } from "../../../lib/chat/agent";
 import { PRESETS, highlightJson, validate } from "../../../lib/playground";
 import type { TIssue } from "../../../lib/playground";
 import { Icon } from "../Icon";
+import { MarkdownOutput } from "../MarkdownOutput";
 
 type TCardStatus = "idle" | "running" | "done" | "error";
 
@@ -25,7 +26,10 @@ type TFreeformResult = {
 };
 
 const CODE_PANEL =
-	"scrollbar-thin overflow-x-auto rounded-xl bg-zinc-900 p-3.5 font-mono text-[0.8125rem]/6 text-zinc-100 ring-1 ring-white/10";
+	"scrollbar-thin max-h-80 overflow-x-auto overflow-y-auto rounded-xl bg-zinc-900 p-3.5 font-mono text-[0.8125rem]/6 text-zinc-100 ring-1 ring-white/10";
+
+const PROSE_PANEL =
+	"scrollbar-thin max-h-80 overflow-y-auto rounded-xl bg-white p-3.5 ring-1 ring-zinc-950/10 dark:bg-white/5 dark:ring-white/10";
 
 const SNIPPET = [
 	'<span class="text-zinc-500">// Chrome 137+ · runs entirely on-device</span>',
@@ -648,12 +652,18 @@ function FreeformCard({ result: r, streamingText }: { result: TFreeformResult; s
 				)}
 				{r.status === "running" &&
 					(streamingText ? (
-						<pre className={`${CODE_PANEL} whitespace-pre-wrap`}>{streamingText}</pre>
+						<div className={PROSE_PANEL}>
+							<MarkdownOutput content={streamingText} animating className="text-sm/6 text-zinc-900 dark:text-zinc-100" />
+						</div>
 					) : (
 						<Spinner label="Calling the on-device model…" />
 					))}
 				{r.status === "error" && <ErrorPanel message={r.error || "Something went wrong."} />}
-				{r.status === "done" && <pre className={`${CODE_PANEL} whitespace-pre-wrap`}>{r.raw || ""}</pre>}
+				{r.status === "done" && (
+					<div className={PROSE_PANEL}>
+						<MarkdownOutput content={r.raw || ""} className="text-sm/6 text-zinc-900 dark:text-zinc-100" />
+					</div>
+				)}
 			</div>
 		</div>
 	);

@@ -1,20 +1,7 @@
 import { memo, useState } from "react";
-import { Streamdown } from "streamdown";
-import { cjk } from "@streamdown/cjk";
-import { code } from "@streamdown/code";
-import { createMathPlugin } from "@streamdown/math";
-import { mermaid } from "@streamdown/mermaid";
 import { Icon } from "../Icon";
+import { MarkdownOutput } from "../MarkdownOutput";
 import type { TChatMessage } from "../../../lib/chat/types";
-
-// Module-level so the plugin config keeps a stable identity across renders
-// (Streamdown is memoized internally). Single-dollar inline math is opt-in.
-const STREAMDOWN_PLUGINS = {
-	cjk,
-	code,
-	math: createMathPlugin({ singleDollarTextMath: true }),
-	mermaid,
-};
 
 // ---------------------------------------------------------------------------
 // Message actions (copy / regenerate)
@@ -106,13 +93,11 @@ export const Message = memo(
 							<span className="size-1.5 animate-bounce rounded-full bg-zinc-400 dark:bg-zinc-500"></span>
 						</span>
 					) : (
-						<Streamdown
+						<MarkdownOutput
 							className="max-w-[72ch] text-base/7 text-zinc-700 dark:text-zinc-300"
-							plugins={STREAMDOWN_PLUGINS}
-							isAnimating={!!msg.streaming}
-						>
-							{msg.content}
-						</Streamdown>
+							content={msg.content}
+							animating={!!msg.streaming}
+						/>
 					)}
 					{showActions && (
 						<div className="mt-2 flex items-center gap-1">

@@ -76,12 +76,12 @@ export function Sidebar({
 
 					<nav className="mt-3 px-3" aria-label="Playgrounds">
 						<a
-							href="/structured-output"
+							href="/writing-tools"
 							className="relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-zinc-600 transition-colors hover:bg-zinc-950/5 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/10 dark:hover:text-white"
 						>
 							<span className="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2" aria-hidden="true"></span>
-							<Icon name="code-bracket" />
-							Structured Output
+							<Icon name="pencil-square" />
+							Writing Tools
 						</a>
 						<a
 							href="/translate"
@@ -92,12 +92,12 @@ export function Sidebar({
 							Translate
 						</a>
 						<a
-							href="/writing-tools"
+							href="/structured-output"
 							className="relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-zinc-600 transition-colors hover:bg-zinc-950/5 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/10 dark:hover:text-white"
 						>
 							<span className="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2" aria-hidden="true"></span>
-							<Icon name="pencil-square" />
-							Writing Tools
+							<Icon name="code-bracket" />
+							Structured Output
 						</a>
 					</nav>
 

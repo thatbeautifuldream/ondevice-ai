@@ -17,6 +17,7 @@ import type {
 	TWritingAvailability,
 } from "../../../lib/writing";
 import { Icon } from "../Icon";
+import { MarkdownOutput } from "../MarkdownOutput";
 
 type TRunStatus = "idle" | "running" | "done" | "error";
 
@@ -644,7 +645,9 @@ export default function WritingToolsApp() {
 
 							{status === "running" &&
 								(tool !== "proofread" && output ? (
-									<p className="text-base/7 whitespace-pre-wrap text-zinc-900 dark:text-zinc-100">{output}</p>
+									<div className="scrollbar-thin max-h-[28rem] overflow-y-auto">
+										<MarkdownOutput content={output} animating />
+									</div>
 								) : (
 									<Spinner label={tool === "proofread" ? "Proofreading…" : "Calling the on-device model…"} />
 								))}
@@ -656,7 +659,9 @@ export default function WritingToolsApp() {
 							)}
 
 							{status === "done" && tool !== "proofread" && (
-								<p className="text-base/7 whitespace-pre-wrap text-zinc-900 dark:text-zinc-100">{output}</p>
+								<div className="scrollbar-thin max-h-[28rem] overflow-y-auto">
+									<MarkdownOutput content={output} />
+								</div>
 							)}
 
 							{status === "done" && tool === "proofread" && segments && (
@@ -672,7 +677,7 @@ export default function WritingToolsApp() {
 											/>
 										)}
 									</div>
-									<p className="rounded-xl bg-zinc-50 p-3.5 text-base/7 whitespace-pre-wrap text-zinc-900 ring-1 ring-zinc-950/10 dark:bg-white/5 dark:text-zinc-100 dark:ring-white/10">
+									<p className="scrollbar-thin max-h-72 overflow-y-auto rounded-xl bg-zinc-50 p-3.5 text-base/7 whitespace-pre-wrap text-zinc-900 ring-1 ring-zinc-950/10 dark:bg-white/5 dark:text-zinc-100 dark:ring-white/10">
 										{segments.map((segment, i) =>
 											segment.kind === "text" ? (
 												<span key={i}>{segment.text}</span>
