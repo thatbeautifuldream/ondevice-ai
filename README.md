@@ -28,6 +28,14 @@ On-device translation built on two stable (Chrome 138+) built-in AI APIs:
 - The Translator API streams the translation via `translateStreaming`, per-pair language packs are downloaded on demand (with progress) and then work offline
 - Sample texts in five languages, swap-and-translate-back, and copy-to-clipboard
 
+### `/writing-tools` — Writing Tools Playground
+
+One route for Chrome's three writing-assistance APIs (origin trials):
+
+- **Write** — draft new text from a prompt with tone (formal/neutral/casual), length, and format controls, streamed via `writeStreaming`
+- **Rewrite** — rework existing text: more formal, more casual, shorter, or longer
+- **Proofread** — grammar and spelling corrections rendered inline using the `corrections[]` index ranges, with per-fix type badges
+
 ## Requirements
 
 The app needs Chrome 137+ with the built-in AI flags enabled:

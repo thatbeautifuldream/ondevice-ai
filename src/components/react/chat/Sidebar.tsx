@@ -74,7 +74,34 @@ export function Sidebar({
 						</button>
 					</div>
 
-					<nav className="scrollbar-thin mt-3 min-h-0 flex-1 overflow-y-auto px-2" aria-label="Conversation list">
+					<nav className="mt-3 px-3" aria-label="Playgrounds">
+						<a
+							href="/structured-output"
+							className="relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-zinc-600 transition-colors hover:bg-zinc-950/5 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/10 dark:hover:text-white"
+						>
+							<span className="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2" aria-hidden="true"></span>
+							<Icon name="code-bracket" />
+							Structured Output
+						</a>
+						<a
+							href="/translate"
+							className="relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-zinc-600 transition-colors hover:bg-zinc-950/5 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/10 dark:hover:text-white"
+						>
+							<span className="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2" aria-hidden="true"></span>
+							<Icon name="language" />
+							Translate
+						</a>
+						<a
+							href="/writing-tools"
+							className="relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-zinc-600 transition-colors hover:bg-zinc-950/5 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/10 dark:hover:text-white"
+						>
+							<span className="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2" aria-hidden="true"></span>
+							<Icon name="pencil-square" />
+							Writing Tools
+						</a>
+					</nav>
+
+					<nav className="scrollbar-thin mt-3 min-h-0 flex-1 overflow-y-auto px-2 pb-4" aria-label="Conversation list">
 						<p className="px-2 py-1.5 text-xs font-medium text-zinc-400 dark:text-zinc-500">Conversations</p>
 						<ul role="list" className="flex flex-col">
 							<MotionConfig reducedMotion="user">
@@ -124,23 +151,11 @@ export function Sidebar({
 						)}
 					</nav>
 
-					<div className="p-3 pt-4">
-						<a
-							href="/structured-output"
-							className="relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-zinc-600 transition-colors hover:bg-zinc-950/5 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/10 dark:hover:text-white"
-						>
-							<span className="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2" aria-hidden="true"></span>
-							<Icon name="code-bracket" />
-							Structured Output
-						</a>
-						<a
-							href="/translate"
-							className="relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-zinc-600 transition-colors hover:bg-zinc-950/5 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/10 dark:hover:text-white"
-						>
-							<span className="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2" aria-hidden="true"></span>
-							<Icon name="language" />
-							Translate
-						</a>
+					<div className="relative p-3 pt-0">
+						<div
+							className="pointer-events-none absolute inset-x-0 bottom-full h-10 bg-linear-to-t from-zinc-50 to-transparent dark:from-zinc-900"
+							aria-hidden="true"
+						></div>
 						<button
 							type="button"
 							onClick={onOpenSettings}
