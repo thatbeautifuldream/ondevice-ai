@@ -20,6 +20,14 @@ A full chat experience on top of the on-device model:
 
 An interactive playground for the Prompt API's `responseConstraint` option. Pass a JSON Schema and the model is forced to reply with valid, parseable JSON. Includes editable presets (boolean, enum, array, object, nested), client-side schema validation, and a side-by-side comparison against the model's unconstrained free-form reply.
 
+### `/translate` — Translate Playground
+
+On-device translation built on two stable (Chrome 138+) built-in AI APIs:
+
+- The Language Detector API auto-detects the source language as you type, with a confidence score
+- The Translator API streams the translation via `translateStreaming`, per-pair language packs are downloaded on demand (with progress) and then work offline
+- Sample texts in five languages, swap-and-translate-back, and copy-to-clipboard
+
 ## Requirements
 
 The app needs Chrome 137+ with the built-in AI flags enabled:

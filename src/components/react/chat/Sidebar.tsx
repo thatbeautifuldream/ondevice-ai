@@ -133,6 +133,14 @@ export function Sidebar({
 							<Icon name="code-bracket" />
 							Structured Output
 						</a>
+						<a
+							href="/translate"
+							className="relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-zinc-600 transition-colors hover:bg-zinc-950/5 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/10 dark:hover:text-white"
+						>
+							<span className="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2" aria-hidden="true"></span>
+							<Icon name="language" />
+							Translate
+						</a>
 						<button
 							type="button"
 							onClick={onOpenSettings}
