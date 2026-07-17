@@ -1,12 +1,9 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import TranslateApp from "../components/react/translate/TranslateApp";
+import { pageSeo } from "../lib/seo";
 ---
 
-<Layout
-	title="Translate Playground - Chat"
-	description="Type in any language and Chrome's on-device Language Detector API identifies it while the Translator API streams the translation. Nothing leaves your device."
-	image="/og/translate.png"
->
+<Layout page={pageSeo.translate} image="/og/translate.png">
 	<TranslateApp client:only="react" />
 </Layout>

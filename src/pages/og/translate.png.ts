@@ -1,13 +1,13 @@
 import { generateOpenGraphImage } from "astro-og-canvas";
 import { ogImageOptions } from "../../lib/og";
+import { pageSeo } from "../../lib/seo";
 
 // OG card for the translate playground.
 export async function GET() {
 	const png = await generateOpenGraphImage(
 		ogImageOptions({
-			title: "Translate Playground",
-			description:
-				"On-device translation with Chrome's Translator and Language Detector APIs. Auto-detects as you type, streams the result.",
+			title: pageSeo.translate.ogTitle,
+			description: pageSeo.translate.ogDescription,
 		}),
 	);
 	return new Response(png, {

@@ -501,7 +501,7 @@ export default function TranslateApp() {
 
 							{blocker === "undetected" && (
 								<p className="rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-700 dark:bg-white/5 dark:text-zinc-300">
-									Couldn't recognize the language yet. Keep typing — detection improves with more text.
+									Couldn't recognize the language yet. Keep typing, detection improves with more text.
 								</p>
 							)}
 
@@ -539,7 +539,7 @@ export default function TranslateApp() {
 						<h2 className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-white">How it works</h2>
 						<p className="mt-2 text-sm text-pretty text-zinc-600 dark:text-zinc-400">
 							The Language Detector API returns ranked candidates with confidence scores, and the Translator API
-							downloads a small language pack per pair, then translates entirely on-device —{" "}
+							downloads a small language pack per pair, then translates entirely on-device:{" "}
 							<code className="rounded bg-zinc-100 px-1 py-0.5 font-mono text-[0.8125em] text-zinc-700 dark:bg-white/10 dark:text-zinc-300">
 								translateStreaming
 							</code>{" "}

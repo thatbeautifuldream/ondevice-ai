@@ -1,12 +1,9 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import PlaygroundApp from "../components/react/playground/PlaygroundApp";
+import { pageSeo } from "../lib/seo";
 ---
 
-<Layout
-	title="Structured Output Playground - Chat"
-	description="Experiment with the Prompt API responseConstraint option to force Chrome's on-device model to reply with JSON that matches a JSON Schema."
-	image="/og/structured-output.png"
->
+<Layout page={pageSeo.structuredOutput} image="/og/structured-output.png">
 	<PlaygroundApp client:only="react" />
 </Layout>

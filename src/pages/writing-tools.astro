@@ -1,12 +1,9 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import WritingToolsApp from "../components/react/writing/WritingToolsApp";
+import { pageSeo } from "../lib/seo";
 ---
 
-<Layout
-	title="Writing Tools Playground - Chat"
-	description="Draft, rework, and proofread text with Chrome's on-device Writer, Rewriter, and Proofreader APIs. Tone and length controls, streamed output, inline corrections."
-	image="/og/writing-tools.png"
->
+<Layout page={pageSeo.writingTools} image="/og/writing-tools.png">
 	<WritingToolsApp client:only="react" />
 </Layout>
