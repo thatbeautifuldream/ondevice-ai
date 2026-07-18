@@ -1,6 +1,21 @@
 import { getProvider } from "./models";
+import {
+	MAX_TOOL_STEPS,
+	extractReplyText,
+	forceAnswerPrompt,
+	parseTurn,
+	repairPrompt,
+	repeatedCallPrompt,
+	replySchema,
+	stripToolMarkup,
+	toolCallSchema,
+	toolResponsePrompt,
+	toolSystemPrompt,
+	visibleText,
+} from "./protocol";
 import type { TModelSession, TSessionPromptOptions } from "./provider";
 import * as store from "./store";
+import { executeTool, type TTool } from "./tools";
 import type { TChatMessage, TConversation, TInitialPrompt, TPromptTurn, TSettings } from "./types";
 
 export type TAvailability = "unavailable" | "downloadable" | "downloading" | "available";
@@ -32,6 +47,8 @@ export type TAgentHooks = {
 // committed BEFORE it is yielded, so consumers can rely on settled state.
 export type TAgentEvent =
 	| { type: "chunk"; content: string } // accumulated text so far
+	| { type: "tool_start"; tool: string; args: Record<string, unknown> } // tool call dispatched
+	| { type: "tool_end"; tool: string; args: Record<string, unknown>; ok: boolean; content: string } // tool finished
 	| { type: "done"; content: string } // response complete, session committed
 	| { type: "aborted"; content: string } // stopped by user; partial text (may be empty)
 	| { type: "error"; message: string } // failed; human-readable message
@@ -84,6 +101,7 @@ function friendlyError(e: unknown): string {
 
 export class ChatAgent {
 	private readonly getSettings: () => TSettings;
+	private readonly getTools: () => TTool[];
 	private readonly hooks: TAgentHooks;
 
 	private readonly sessions = new Map<string, TSessionRecord>();
@@ -101,8 +119,9 @@ export class ChatAgent {
 	private supportsSummarizer = false;
 	private supportsLanguageDetector = false;
 
-	constructor(config: { settings: () => TSettings; hooks?: TAgentHooks }) {
+	constructor(config: { settings: () => TSettings; tools?: () => TTool[]; hooks?: TAgentHooks }) {
 		this.getSettings = config.settings;
+		this.getTools = config.tools ?? (() => []);
 		this.hooks = config.hooks ?? {};
 	}
 
@@ -200,18 +219,90 @@ export class ChatAgent {
 			return;
 		}
 
-		// Phase 2: stream the response, yielding accumulated text per chunk.
+		// Phase 2: the tool loop. Each iteration streams one model turn; a turn
+		// either ends with a plain reply (done) or a tool call, whose result is
+		// fed back as the next turn's prompt. Guards: step cap, duplicate-call
+		// detection, and one constrained repair turn for malformed calls.
+		const tools = this.getTools();
+		const toolNames = tools.map((t) => t.name);
 		let acc = "";
+		let visible = "";
+		let finalText = "";
 		try {
-			const chunks = this.streamChunks(session, prompt, { signal });
+			let turnPrompt = prompt;
+			let constraint: Record<string, unknown> | undefined;
+			let steps = 0;
+			let repaired = false;
+			let forced = false;
+			let forcedJson = false;
+			const seenCalls = new Set<string>();
 			while (true) {
-				const next = await chunks.next();
-				if (next.done) {
+				acc = "";
+				const chunks = this.streamChunks(session, turnPrompt, { signal, responseConstraint: constraint });
+				constraint = undefined;
+				while (true) {
+					const next = await chunks.next();
+					if (next.done) {
+						acc = next.value;
+						break;
+					}
 					acc = next.value;
+					// Reasoning blocks from thinking models are hidden even when no
+					// tools are active.
+					const shown = visibleText(acc, toolNames);
+					if (shown) {
+						visible = shown;
+						yield { type: "chunk", content: shown };
+					}
+				}
+				if (tools.length === 0) {
+					finalText = stripToolMarkup(acc);
 					break;
 				}
-				acc = next.value;
-				yield { type: "chunk", content: acc };
+				if (forcedJson) {
+					finalText = stripToolMarkup(extractReplyText(acc), toolNames) || stripToolMarkup(acc, toolNames);
+					break;
+				}
+				const parsed = parseTurn(acc, toolNames);
+				if (parsed.kind === "reply" || forced) {
+					finalText = parsed.kind === "reply" ? parsed.text : stripToolMarkup(acc, toolNames);
+					// A turn that was all markup/reasoning strips to nothing — force
+					// one JSON-constrained answer turn the model can't wrap in tags.
+					if (!finalText && !forcedJson) {
+						forcedJson = true;
+						turnPrompt = forceAnswerPrompt();
+						constraint = replySchema();
+						continue;
+					}
+					break;
+				}
+				if (parsed.kind === "malformed") {
+					if (repaired) {
+						finalText = stripToolMarkup(acc, toolNames);
+						break;
+					}
+					repaired = true;
+					turnPrompt = repairPrompt();
+					constraint = toolCallSchema(tools);
+					continue;
+				}
+				steps++;
+				if (steps > MAX_TOOL_STEPS) {
+					forced = true;
+					turnPrompt = forceAnswerPrompt();
+					continue;
+				}
+				const callKey = `${parsed.tool}:${JSON.stringify(parsed.args)}`;
+				if (seenCalls.has(callKey)) {
+					forced = true;
+					turnPrompt = repeatedCallPrompt(parsed.tool);
+					continue;
+				}
+				seenCalls.add(callKey);
+				yield { type: "tool_start", tool: parsed.tool, args: parsed.args };
+				const result = await executeTool(tools, parsed.tool, parsed.args, signal);
+				yield { type: "tool_end", tool: result.tool, args: result.args, ok: result.ok, content: result.content };
+				turnPrompt = toolResponsePrompt(result);
 			}
 		} catch (err) {
 			// Aborted prompts are rolled back by the browser and failed ones are
@@ -220,17 +311,19 @@ export class ChatAgent {
 			this.destroySession(conv.id);
 			const e = err as DOMException;
 			if (e?.name === "AbortError") {
-				yield { type: "aborted", content: acc };
+				yield { type: "aborted", content: visible };
 				return;
 			}
 			yield { type: "error", message: friendlyError(e) };
 			return;
 		}
 
+		if (!finalText) finalText = "I couldn't produce an answer for that. Try rephrasing.";
+
 		// Phase 3: commit — the session now reflects the full stored history,
 		// including the exchange the consumer is about to persist.
 		this.markConsumed(conv.id, conv.messages.length);
-		yield { type: "done", content: acc };
+		yield { type: "done", content: finalText };
 
 		// Phase 4: auto-compact when the context window is filling up or the
 		// browser signalled an overflow during the turn.
@@ -422,7 +515,10 @@ export class ChatAgent {
 	// then bookkeeping (consumed marker, LRU eviction, overflow early-warning).
 	private async createSessionFor(conv: TConversation, excludeLastN = 0, signal?: AbortSignal): Promise<TModelSession> {
 		const settings = this.getSettings();
-		const initialPrompts = store.buildInitialPrompts(conv, settings.systemPrompt, excludeLastN);
+		const tools = this.getTools();
+		const systemPrompt =
+			tools.length > 0 ? `${settings.systemPrompt.trim()}\n\n${toolSystemPrompt(tools)}` : settings.systemPrompt;
+		const initialPrompts = store.buildInitialPrompts(conv, systemPrompt, excludeLastN);
 		const session = await this.createRawSession(initialPrompts, signal);
 		this.sessions.set(conv.id, { session, consumed: Math.max(0, conv.messages.length - excludeLastN) });
 		session.oncontextoverflow = () => this.onContextOverflow();

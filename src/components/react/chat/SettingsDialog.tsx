@@ -168,6 +168,27 @@ export function SettingsDialog({ open, settings, modelParams, onClose, onChange,
 				</div>
 
 				<div className="flex flex-col gap-2">
+					<span className="text-sm font-medium text-zinc-900 dark:text-white">Tools</span>
+					<label htmlFor="setting-tools" className="flex cursor-pointer items-start justify-between gap-4">
+						<span className="text-sm text-zinc-500 dark:text-zinc-400">
+							Let the model search and read Wikipedia when it needs facts. Requests go directly from your browser to
+							Wikipedia.
+						</span>
+						<div className="group relative inline-flex w-11 shrink-0 rounded-full bg-zinc-200 p-0.5 inset-ring inset-ring-zinc-900/5 outline-accent outline-offset-2 transition-colors duration-200 ease-in-out has-checked:bg-accent has-focus-visible:outline-2 sm:w-9 dark:bg-white/5 dark:inset-ring-white/10">
+							<span className="aspect-square w-1/2 rounded-full bg-white ring-1 ring-zinc-900/5 shadow-xs transition-transform duration-200 ease-in-out group-has-checked:translate-x-full dark:shadow-none"></span>
+							<input
+								type="checkbox"
+								id="setting-tools"
+								name="tools"
+								checked={settings.toolsEnabled}
+								onChange={(e) => onChange({ toolsEnabled: e.target.checked })}
+								className="absolute inset-0 size-full appearance-none focus:outline-hidden"
+							/>
+						</div>
+					</label>
+				</div>
+
+				<div className="flex flex-col gap-2">
 					<label htmlFor="setting-system" className="text-sm font-medium text-zinc-900 dark:text-white">
 						System prompt
 					</label>

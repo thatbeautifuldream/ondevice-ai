@@ -28,12 +28,13 @@ export function loadSettings(): TSettings {
 				temperature: typeof parsed.temperature === "number" ? parsed.temperature : 1,
 				topK: typeof parsed.topK === "number" ? parsed.topK : 3,
 				modelId: typeof parsed.modelId === "string" && parsed.modelId ? parsed.modelId : BUILT_IN_MODEL_ID,
+				toolsEnabled: typeof parsed.toolsEnabled === "boolean" ? parsed.toolsEnabled : true,
 			};
 		}
 	} catch {
 		/* ignore */
 	}
-	return { systemPrompt: DEFAULT_SYSTEM, temperature: 1, topK: 3, modelId: BUILT_IN_MODEL_ID };
+	return { systemPrompt: DEFAULT_SYSTEM, temperature: 1, topK: 3, modelId: BUILT_IN_MODEL_ID, toolsEnabled: true };
 }
 
 export function saveSettings(settings: TSettings): void {

@@ -1,9 +1,20 @@
+export type TToolUse = {
+	tool: string;
+	args: Record<string, unknown>;
+	// Undefined while the tool is still running.
+	ok?: boolean;
+	result?: string;
+};
+
 export type TChatMessage = {
 	id: string;
 	role: "user" | "assistant";
 	content: string;
 	streaming?: boolean;
 	error?: boolean;
+	tools?: TToolUse[];
+	// Model id that produced this assistant message.
+	model?: string;
 };
 
 // A prompt turn as fed to the Prompt API (compaction summaries, history replay).
@@ -38,4 +49,5 @@ export type TSettings = {
 	temperature: number;
 	topK: number;
 	modelId: string;
+	toolsEnabled: boolean;
 };

@@ -1,12 +1,14 @@
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { Icon } from "../Icon";
 import type { TAvailability } from "../../../lib/chat/agent";
+import { modelLabel } from "../../../lib/chat/models";
 import type { TConversation } from "../../../lib/chat/types";
 
 type TSidebarProps = {
 	conversations: TConversation[];
 	currentId: string | null;
 	availability: TAvailability | null;
+	modelId: string;
 	open: boolean;
 	collapsed: boolean;
 	onClose: () => void;
@@ -16,17 +18,25 @@ type TSidebarProps = {
 	onOpenSettings: () => void;
 };
 
-const STATUS: Record<TAvailability, { dot: string; text: string }> = {
-	available: { dot: "bg-accent", text: "Ready · Gemini Nano" },
-	downloadable: { dot: "bg-zinc-400", text: "Model ready to download" },
-	downloading: { dot: "bg-zinc-400 animate-pulse", text: "Downloading model…" },
-	unavailable: { dot: "bg-zinc-300 dark:bg-zinc-600", text: "Unavailable in this browser" },
-};
+function statusFor(availability: TAvailability, modelId: string): { dot: string; text: string } {
+	const label = modelLabel(modelId);
+	switch (availability) {
+		case "available":
+			return { dot: "bg-accent", text: `Ready · ${label}` };
+		case "downloadable":
+			return { dot: "bg-zinc-400", text: `${label} ready to download` };
+		case "downloading":
+			return { dot: "bg-zinc-400 animate-pulse", text: `Downloading ${label}…` };
+		case "unavailable":
+			return { dot: "bg-zinc-300 dark:bg-zinc-600", text: "Unavailable in this browser" };
+	}
+}
 
 export function Sidebar({
 	conversations,
 	currentId,
 	availability,
+	modelId,
 	open,
 	collapsed,
 	onClose,
@@ -35,7 +45,7 @@ export function Sidebar({
 	onDelete,
 	onOpenSettings,
 }: TSidebarProps) {
-	const status = availability ? STATUS[availability] : { dot: "bg-zinc-400", text: "Checking model…" };
+	const status = availability ? statusFor(availability, modelId) : { dot: "bg-zinc-400", text: "Checking model…" };
 
 	return (
 		<>

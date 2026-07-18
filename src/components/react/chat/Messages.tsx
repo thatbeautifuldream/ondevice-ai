@@ -1,8 +1,74 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { Icon } from "../Icon";
 import { MarkdownOutput } from "../MarkdownOutput";
-import type { TChatMessage } from "../../../lib/chat/types";
+import type { TChatMessage, TToolUse } from "../../../lib/chat/types";
+import { modelLabel } from "../../../lib/chat/models";
 import { SpeechEngine, speakableText } from "../../../lib/speech";
+
+// ---------------------------------------------------------------------------
+// Tool activity
+// ---------------------------------------------------------------------------
+
+function toolArgSummary(use: TToolUse): string {
+	const firstArg = Object.values(use.args).find((v) => typeof v === "string");
+	return firstArg ?? JSON.stringify(use.args);
+}
+
+function ToolStatusIcon({ ok }: { ok?: boolean }) {
+	if (ok === undefined) {
+		return (
+			<span className="shrink-0 animate-spin text-zinc-400 dark:text-zinc-500">
+				<Icon name="arrow-path" className="size-3.5" />
+			</span>
+		);
+	}
+	return (
+		<span className={`shrink-0 ${ok ? "text-accent" : "text-zinc-400 dark:text-zinc-500"}`}>
+			<Icon name={ok ? "check" : "exclamation-triangle"} className="size-3.5" />
+		</span>
+	);
+}
+
+function ToolCalls({ tools }: { tools: TToolUse[] }) {
+	return (
+		<div className="mb-3 flex flex-col gap-1.5">
+			{tools.map((use, i) => (
+				<details key={i} className="group max-w-[72ch] rounded-lg bg-zinc-50 dark:bg-white/5">
+					<summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-zinc-950/2.5 [&::-webkit-details-marker]:hidden dark:hover:bg-white/5">
+						<ToolStatusIcon ok={use.ok} />
+						<span className="shrink-0 font-medium text-zinc-900 dark:text-white">{use.tool}</span>
+						<span className="min-w-0 flex-1 truncate text-zinc-500 dark:text-zinc-400">{toolArgSummary(use)}</span>
+						<svg
+							viewBox="0 0 8 5"
+							width="8"
+							height="5"
+							fill="none"
+							className="shrink-0 text-zinc-400 transition-transform group-open:rotate-180 dark:text-zinc-500"
+						>
+							<path d="M.5.5 4 4 7.5.5" stroke="currentColor" />
+						</svg>
+					</summary>
+					<div className="border-t border-zinc-950/5 px-3 py-2.5 dark:border-white/5">
+						<dl className="flex flex-col gap-2.5">
+							<div>
+								<dt className="text-xs font-medium text-zinc-900 dark:text-white">Input</dt>
+								<dd className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+									<code className="break-all font-mono">{JSON.stringify(use.args)}</code>
+								</dd>
+							</div>
+							<div>
+								<dt className="text-xs font-medium text-zinc-900 dark:text-white">Output</dt>
+								<dd className="scrollbar-thin mt-1 max-h-48 overflow-y-auto text-xs whitespace-pre-wrap text-zinc-500 dark:text-zinc-400">
+									{use.result ?? "Running…"}
+								</dd>
+							</div>
+						</dl>
+					</div>
+				</details>
+			))}
+		</div>
+	);
+}
 
 // ---------------------------------------------------------------------------
 // Message actions (copy / read aloud / regenerate)
@@ -119,12 +185,17 @@ type TMessageProps = {
 	content: string;
 	streaming?: boolean;
 	error?: boolean;
+	tools?: TToolUse[];
+	model?: string;
+	// Serialized snapshot of `tools` — the store mutates the array in place, so
+	// the memo comparator needs a value frozen at render time.
+	toolsKey: string;
 	isLast: boolean;
 	onRegenerate: () => void;
 };
 
 export const Message = memo(
-	function Message({ role, content, streaming, error, isLast, onRegenerate }: TMessageProps) {
+	function Message({ role, content, streaming, error, tools, model, toolsKey: _toolsKey, isLast, onRegenerate }: TMessageProps) {
 		const msg = { role, content, streaming, error };
 		if (msg.role === "user") {
 			return (
@@ -144,6 +215,10 @@ export const Message = memo(
 					<Icon name="sparkles" className="size-4" />
 				</div>
 				<div className="min-w-0 flex-1">
+					{model && !msg.error && (
+						<p className="mb-1.5 truncate text-xs font-medium text-zinc-400 dark:text-zinc-500">{modelLabel(model)}</p>
+					)}
+					{tools && tools.length > 0 && <ToolCalls tools={tools} />}
 					{msg.error ? (
 						<div className="flex items-start gap-2 rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-700 dark:bg-white/5 dark:text-zinc-300">
 							<span className="mt-0.5 shrink-0">
@@ -190,7 +265,9 @@ export const Message = memo(
 		prev.content === next.content &&
 		prev.streaming === next.streaming &&
 		prev.error === next.error &&
-		prev.isLast === next.isLast,
+		prev.isLast === next.isLast &&
+		prev.model === next.model &&
+		prev.toolsKey === next.toolsKey,
 );
 
 // ---------------------------------------------------------------------------

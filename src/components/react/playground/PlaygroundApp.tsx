@@ -110,7 +110,7 @@ export default function PlaygroundApp() {
 	const agentRef = useRef<ChatAgent | null>(null);
 	if (!agentRef.current) {
 		agentRef.current = new ChatAgent({
-			settings: () => ({ systemPrompt: "", temperature: 1, topK: 3, modelId: BUILT_IN_MODEL_ID }),
+			settings: () => ({ systemPrompt: "", temperature: 1, topK: 3, modelId: BUILT_IN_MODEL_ID, toolsEnabled: false }),
 			hooks: {
 				onAvailabilityChange: (availability) => setAvailability(availability),
 				onDownloadStart: () => {

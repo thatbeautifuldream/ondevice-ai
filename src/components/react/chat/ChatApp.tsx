@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { ChatAgent } from "../../../lib/chat/agent";
 import * as store from "../../../lib/chat/store";
+import { WIKIPEDIA_TOOLS } from "../../../lib/chat/tools/wikipedia";
 import type { TChatMessage, TSettings } from "../../../lib/chat/types";
 import { Icon } from "../Icon";
 import { Sidebar } from "./Sidebar";
@@ -77,6 +78,7 @@ export default function ChatApp() {
 	if (!agentRef.current) {
 		agentRef.current = new ChatAgent({
 			settings: () => settingsRef.current,
+			tools: () => (settingsRef.current.toolsEnabled ? WIKIPEDIA_TOOLS : []),
 			hooks: {
 				onAvailabilityChange: (availability) => setAvailability(availability),
 				onDownloadStart: () => {
@@ -152,7 +154,13 @@ export default function ChatApp() {
 		// Append the user message + an assistant placeholder and render
 		// immediately, before any async work (session creation can be slow).
 		const userMsg: TChatMessage = { id: store.uid(), role: "user", content: trimmed };
-		const assistantMsg: TChatMessage = { id: store.uid(), role: "assistant", content: "", streaming: true };
+		const assistantMsg: TChatMessage = {
+			id: store.uid(),
+			role: "assistant",
+			content: "",
+			streaming: true,
+			model: settingsRef.current.modelId,
+		};
 		conv.messages.push(userMsg, assistantMsg);
 		const userCount = conv.messages.filter((m) => m.role === "user").length;
 		if (userCount === 1) conv.title = truncate(trimmed);
@@ -191,6 +199,24 @@ export default function ChatApp() {
 						bump();
 						scrollToBottom();
 					}
+					break;
+				}
+				case "tool_start": {
+					// A new model turn follows the tool result; clear any pre-call text.
+					assistantMsg.content = "";
+					assistantMsg.tools = [...(assistantMsg.tools ?? []), { tool: event.tool, args: event.args }];
+					bump();
+					scrollToBottom();
+					break;
+				}
+				case "tool_end": {
+					const uses = assistantMsg.tools ?? [];
+					const last = uses[uses.length - 1];
+					if (last && last.tool === event.tool && last.ok === undefined) {
+						last.ok = event.ok;
+						last.result = event.content;
+					}
+					bump();
 					break;
 				}
 				case "done": {
@@ -303,6 +329,7 @@ export default function ChatApp() {
 				conversations={store.list()}
 				currentId={store.getCurrentId()}
 				availability={availability}
+				modelId={settings.modelId}
 				open={sidebarOpen}
 				collapsed={sidebarCollapsed}
 				onClose={() => setSidebarOpen(false)}
@@ -364,6 +391,9 @@ export default function ChatApp() {
 									content={m.content}
 									streaming={m.streaming}
 									error={m.error}
+									tools={m.tools}
+									model={m.model}
+									toolsKey={JSON.stringify(m.tools ?? null)}
 									isLast={i === messages.length - 1}
 									onRegenerate={() => void regenerate()}
 								/>
