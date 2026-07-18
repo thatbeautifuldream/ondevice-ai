@@ -42,6 +42,25 @@ const structuredData = [
 <html lang="en" class="antialiased">
   <head>
     <meta charset="utf-8" />
+    <script is:inline>
+      // Apply the theme before paint; re-apply after ClientRouter swaps and
+      // when the OS scheme changes while the preference is "system".
+      (() => {
+        const scheme = matchMedia("(prefers-color-scheme: dark)");
+        const apply = () => {
+          const stored = localStorage.getItem("theme");
+          const dark =
+            stored === "dark" || (stored !== "light" && scheme.matches);
+          document.documentElement.classList.toggle("dark", dark);
+        };
+        apply();
+        document.addEventListener("astro:after-swap", apply);
+        scheme.addEventListener("change", () => {
+          apply();
+          window.dispatchEvent(new Event("themechange"));
+        });
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96.png" />
@@ -117,5 +136,20 @@ const structuredData = [
     class="bg-white text-zinc-900 font-sans dark:bg-zinc-950 dark:text-zinc-100"
   >
     <slot />
+    <script>
+      import { toggleTheme } from "../lib/theme";
+
+      document.addEventListener("keydown", (e) => {
+        if (
+          (e.metaKey || e.ctrlKey) &&
+          !e.altKey &&
+          !e.shiftKey &&
+          e.key.toLowerCase() === "d"
+        ) {
+          e.preventDefault();
+          toggleTheme();
+        }
+      });
+    </script>
   </body>
 </html>

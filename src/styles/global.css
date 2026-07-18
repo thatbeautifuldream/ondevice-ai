@@ -7,27 +7,35 @@
 @import "katex/dist/katex.min.css";
 @source "../../node_modules/streamdown/dist/*.js";
 
+/* Manual theme control: dark: utilities key off the .dark class on <html>,
+   set before paint by the inline script in Layout.astro. */
+@custom-variant dark (&:is(.dark *));
+
 /* transitions.dev — Card resize tokens (sidebar collapse tween). */
 :root {
 	--resize-dur: 300ms;
 	--resize-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* transitions.dev — Theme wipe tokens (diagonal soft-edge sweep). */
+:root {
+	--theme-wipe-dur: 900ms;
+	--theme-wipe-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 /* Monochrome accent tokens — single source of truth for the app's accent color.
-   These swap automatically with prefers-color-scheme, so utilities like
-   bg-accent / text-accent / ring-accent need no dark: variant. */
+   These swap with the .dark class, so utilities like bg-accent / text-accent /
+   ring-accent need no dark: variant. */
 :root {
 	--accent: var(--color-zinc-900);
 	--accent-hover: var(--color-zinc-700);
 	--accent-fg: var(--color-white);
 }
 
-@media (prefers-color-scheme: dark) {
-	:root {
-		--accent: var(--color-white);
-		--accent-hover: var(--color-zinc-200);
-		--accent-fg: var(--color-zinc-900);
-	}
+.dark {
+	--accent: var(--color-white);
+	--accent-hover: var(--color-zinc-200);
+	--accent-fg: var(--color-zinc-900);
 }
 
 /* Streamdown styles its elements with shadcn-style theme tokens (bg-background,
@@ -43,15 +51,13 @@
 	--sidebar: var(--color-zinc-50);
 }
 
-@media (prefers-color-scheme: dark) {
-	:root {
-		--background: var(--color-zinc-950);
-		--foreground: var(--color-zinc-100);
-		--border: color-mix(in oklab, var(--color-white) 10%, transparent);
-		--muted: color-mix(in oklab, var(--color-white) 5%, transparent);
-		--muted-foreground: var(--color-zinc-400);
-		--sidebar: color-mix(in oklab, var(--color-white) 4%, transparent);
-	}
+.dark {
+	--background: var(--color-zinc-950);
+	--foreground: var(--color-zinc-100);
+	--border: color-mix(in oklab, var(--color-white) 10%, transparent);
+	--muted: color-mix(in oklab, var(--color-white) 5%, transparent);
+	--muted-foreground: var(--color-zinc-400);
+	--sidebar: color-mix(in oklab, var(--color-white) 4%, transparent);
 }
 
 @theme {
@@ -121,9 +127,36 @@ body {
 	height: 100%;
 }
 
-/* Let native controls (scrollbars, form controls) follow the OS color scheme. */
+/* Native controls (scrollbars, form controls) follow the active theme. */
 :root {
-	color-scheme: light dark;
+	color-scheme: light;
+}
+
+.dark {
+	color-scheme: dark;
+}
+
+/* Theme toggle: suppress the default view-transition crossfade and stack the
+   new snapshot on top. setTheme() slides the oversized gradient mask from the
+   bottom-left corner to the top-right; the wide transparent band in the
+   gradient is what gives the wipe its soft blurred edge. */
+html.theme-transition::view-transition-old(root),
+html.theme-transition::view-transition-new(root) {
+	animation: none;
+	mix-blend-mode: normal;
+}
+
+html.theme-transition::view-transition-old(root) {
+	z-index: 1;
+}
+
+html.theme-transition::view-transition-new(root) {
+	z-index: 2;
+	mask-image: linear-gradient(45deg, #000 35%, transparent 65%);
+	mask-size: 300% 300%;
+	mask-repeat: no-repeat;
+	mask-position: 100% 0%;
+	will-change: mask-position;
 }
 
 /* Keyboard-accessible focus removal for mouse users on interactive controls. */

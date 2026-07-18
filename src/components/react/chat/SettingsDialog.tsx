@@ -1,7 +1,14 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "../Icon";
 import type { TModelParams } from "../../../lib/chat/agent";
 import type { TSettings } from "../../../lib/chat/types";
+import { getThemePreference, setTheme, type TThemePreference } from "../../../lib/theme";
+
+const THEME_OPTIONS = [
+	{ value: "light", label: "Light", icon: "sun" },
+	{ value: "dark", label: "Dark", icon: "moon" },
+	{ value: "system", label: "System", icon: "computer-desktop" },
+] as const;
 
 type TSettingsDialogProps = {
 	open: boolean;
@@ -14,6 +21,14 @@ type TSettingsDialogProps = {
 
 export function SettingsDialog({ open, settings, modelParams, onClose, onChange, onClearAll }: TSettingsDialogProps) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
+	const [theme, setThemePreference] = useState<TThemePreference>("system");
+
+	useEffect(() => {
+		setThemePreference(getThemePreference());
+		const onThemeChange = () => setThemePreference(getThemePreference());
+		window.addEventListener("themechange", onThemeChange);
+		return () => window.removeEventListener("themechange", onThemeChange);
+	}, []);
 
 	useEffect(() => {
 		const dialog = dialogRef.current;
@@ -45,6 +60,33 @@ export function SettingsDialog({ open, settings, modelParams, onClose, onChange,
 			</div>
 
 			<div className="flex max-h-[70vh] flex-col gap-6 overflow-y-auto px-5 py-5 scrollbar-thin">
+				<div className="flex flex-col gap-2">
+					<span className="text-sm font-medium text-zinc-900 dark:text-white">Appearance</span>
+					<p className="text-sm text-zinc-500 dark:text-zinc-400">
+						Choose a theme, or press <kbd className="font-sans">⌘D</kbd> anywhere to toggle.
+					</p>
+					<div className="flex gap-1 self-start rounded-lg bg-zinc-50 p-1 dark:bg-white/5" role="group" aria-label="Theme">
+						{THEME_OPTIONS.map((option) => (
+							<button
+								key={option.value}
+								type="button"
+								aria-pressed={theme === option.value}
+								onClick={() => {
+									if (theme !== option.value) setTheme(option.value);
+								}}
+								className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+									theme === option.value
+										? "bg-white text-zinc-900 shadow-sm dark:bg-white/10 dark:text-white dark:shadow-none"
+										: "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+								}`}
+							>
+								<Icon name={option.icon} />
+								{option.label}
+							</button>
+						))}
+					</div>
+				</div>
+
 				<div className="flex flex-col gap-2">
 					<label htmlFor="setting-system" className="text-sm font-medium text-zinc-900 dark:text-white">
 						System prompt
