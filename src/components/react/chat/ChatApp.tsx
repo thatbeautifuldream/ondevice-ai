@@ -374,7 +374,7 @@ export default function ChatApp() {
 				</header>
 
 				<div ref={scrollerRef} className="scrollbar-thin flex flex-1 flex-col overflow-y-auto">
-					{unavailable && <UnavailableNotice />}
+					{unavailable && <UnavailableNotice onOpenSettings={() => setSettingsOpen(true)} />}
 
 					{!unavailable && !hasMessages && (
 						<div className="grid min-h-full place-items-center">

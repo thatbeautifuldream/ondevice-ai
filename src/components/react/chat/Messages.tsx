@@ -2,7 +2,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { Icon } from "../Icon";
 import { MarkdownOutput } from "../MarkdownOutput";
 import type { TChatMessage, TToolUse } from "../../../lib/chat/types";
-import { modelLabel } from "../../../lib/chat/models";
+import { modelLabel, supportsWebGPU } from "../../../lib/chat/models";
 import { SpeechEngine, speakableText } from "../../../lib/speech";
 
 // ---------------------------------------------------------------------------
@@ -330,7 +330,68 @@ const SETUP_STEPS = [
 	},
 ];
 
-export function UnavailableNotice() {
+// True for desktop Chromium builds, where the Prompt API can be enabled via
+// flags; mobile and non-Chromium browsers can never turn it on.
+function isDesktopChromium(): boolean {
+	const ua = navigator.userAgent;
+	return ua.includes("Chrome/") && !/Android|Mobile/i.test(ua);
+}
+
+export function UnavailableNotice({ onOpenSettings }: { onOpenSettings: () => void }) {
+	// The selected model can't run here, but WebGPU can: steer the user to a
+	// downloadable model instead of dead-ending them.
+	if (supportsWebGPU()) {
+		return (
+			<div className="mx-auto w-full max-w-lg px-4 py-16">
+				<div className="flex flex-col items-center text-center">
+					<div className="flex size-12 items-center justify-center text-accent">
+						<Icon name="sparkles" className="size-7" />
+					</div>
+					<h2 className="mt-4 text-lg font-semibold tracking-tight text-balance">
+						This browser has no built-in AI model
+					</h2>
+					<p className="mt-2 max-w-[48ch] text-sm text-pretty text-zinc-500 dark:text-zinc-400">
+						You can download an open model instead. It runs entirely on your device and is cached for next time.
+					</p>
+					<button
+						type="button"
+						onClick={onOpenSettings}
+						className="mt-6 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-accent-fg hover:bg-accent/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+					>
+						Choose a model
+					</button>
+					{isDesktopChromium() && (
+						<p className="mt-6 max-w-[48ch] text-xs text-pretty text-zinc-400 dark:text-zinc-500">
+							Prefer Chrome's built-in Gemini Nano? Enable the Prompt API flags at chrome://flags, then reload and pick
+							the built-in model in settings.
+						</p>
+					)}
+				</div>
+			</div>
+		);
+	}
+
+	// No WebGPU either. Desktop Chromium can still get there via flags; other
+	// browsers simply can't run on-device AI.
+	if (!isDesktopChromium()) {
+		return (
+			<div className="mx-auto w-full max-w-lg px-4 py-16">
+				<div className="flex flex-col items-center text-center">
+					<div className="flex size-12 items-center justify-center text-zinc-400 dark:text-zinc-500">
+						<Icon name="exclamation-triangle" className="size-7" />
+					</div>
+					<h2 className="mt-4 text-lg font-semibold tracking-tight text-balance">
+						On-device AI isn't supported in this browser
+					</h2>
+					<p className="mt-2 max-w-[48ch] text-sm text-pretty text-zinc-500 dark:text-zinc-400">
+						Running models in the browser needs WebGPU. Open this page in a recent version of Chrome, Edge, or Safari
+						and everything will run privately on your device.
+					</p>
+				</div>
+			</div>
+		);
+	}
+
 	return (
 		<div className="mx-auto w-full max-w-lg px-4 py-16">
 			<div className="flex flex-col items-center text-center">

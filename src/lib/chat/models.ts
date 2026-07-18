@@ -35,6 +35,24 @@ export function supportsWebGPU(): boolean {
 	return typeof navigator !== "undefined" && "gpu" in navigator;
 }
 
+export function supportsPromptApi(): boolean {
+	return typeof LanguageModel !== "undefined";
+}
+
+// Small enough to download and run inside a phone browser tab, capable enough
+// to be worth chatting with.
+export const DEFAULT_WEBLLM_MODEL_ID = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
+
+// Resolve which model a session should use. The built-in model can never work
+// where the Prompt API doesn't exist (mobile browsers, Firefox, Safari), so
+// when WebGPU is available it falls through to a small downloadable model
+// instead of dead-ending the chat.
+export function resolveModelId(stored?: string): string {
+	const id = stored || BUILT_IN_MODEL_ID;
+	if (id === BUILT_IN_MODEL_ID && !supportsPromptApi() && supportsWebGPU()) return DEFAULT_WEBLLM_MODEL_ID;
+	return id;
+}
+
 // The selectable catalog: the built-in model plus every prebuilt model WebLLM
 // ships. The WebLLM runtime is imported lazily so the chat page only pays for
 // it when the catalog is listed or a downloadable model is selected.
