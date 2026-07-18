@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChatAgent } from "../../../lib/chat/agent";
 import type { TAvailability } from "../../../lib/chat/agent";
-import { PRESETS, highlightJson, validate } from "../../../lib/playground";
+import { PRESETS, validate } from "../../../lib/playground";
 import type { TIssue } from "../../../lib/playground";
 import { Icon } from "../Icon";
 import { MarkdownOutput } from "../MarkdownOutput";
@@ -25,19 +25,20 @@ type TFreeformResult = {
 	error?: string;
 };
 
-const CODE_PANEL =
-	"scrollbar-thin max-h-80 overflow-x-auto overflow-y-auto rounded-xl bg-zinc-900 p-3.5 font-mono text-[0.8125rem]/6 text-zinc-100 ring-1 ring-white/10";
+const jsonFence = (body: string) => ["```json", body, "```"].join("\n");
 
 const PROSE_PANEL =
 	"scrollbar-thin max-h-80 overflow-y-auto rounded-xl bg-white p-3.5 ring-1 ring-zinc-950/10 dark:bg-white/5 dark:ring-white/10";
 
 const SNIPPET = [
-	'<span class="text-zinc-500">// Chrome 137+ · runs entirely on-device</span>',
-	'<span class="text-zinc-400">const</span> session = <span class="text-zinc-400">await</span> LanguageModel.<span class="text-white">create</span>();',
-	'<span class="text-zinc-400">const</span> result = <span class="text-zinc-400">await</span> session.<span class="text-white">prompt</span>(prompt, {',
-	'  responseConstraint: { <span class="text-zinc-400">type</span>: <span class="text-white">"boolean"</span> },',
+	"```js",
+	"// Chrome 137+ · runs entirely on-device",
+	"const session = await LanguageModel.create();",
+	"const result = await session.prompt(prompt, {",
+	'  responseConstraint: { type: "boolean" },',
 	"});",
-	'<span class="text-zinc-400">const</span> data = <span class="text-white">JSON</span>.<span class="text-white">parse</span>(result); <span class="text-zinc-500">// &rarr; true</span>',
+	"const data = JSON.parse(result); // → true",
+	"```",
 ].join("\n");
 
 const MODEL_STATUS: Record<TAvailability, { dot: string; text: string; short: string }> = {
@@ -502,10 +503,7 @@ export default function PlaygroundApp() {
 						</p>
 					</div>
 					<div className="lg:col-span-2">
-						<pre
-							className="scrollbar-thin overflow-x-auto rounded-xl bg-zinc-900 p-4 font-mono text-[0.8125rem]/6 text-zinc-100 ring-1 ring-white/10"
-							dangerouslySetInnerHTML={{ __html: SNIPPET }}
-						></pre>
+						<MarkdownOutput content={SNIPPET} className="text-[0.8125rem]" />
 					</div>
 				</section>
 
@@ -600,7 +598,9 @@ function StructuredCard({ result: r, tab, onTab, tabBtnClass }: TStructuredCardP
 								<ErrorPanel message={r.error || "The response could not be parsed as JSON."} />
 							) : (
 								<>
-									<pre className={CODE_PANEL} dangerouslySetInnerHTML={{ __html: highlightJson(r.parsed) }}></pre>
+									<div className="scrollbar-thin max-h-80 overflow-y-auto">
+										<MarkdownOutput content={jsonFence(JSON.stringify(r.parsed, null, 2))} className="text-[0.8125rem]" />
+									</div>
 									{issues.length > 0 && (
 										<ul className="mt-3 space-y-1 text-xs text-zinc-600 dark:text-zinc-400" role="list">
 											{issues.map((issue, i) => (
@@ -617,7 +617,9 @@ function StructuredCard({ result: r, tab, onTab, tabBtnClass }: TStructuredCardP
 					)}
 					{tab === "raw" && (
 						<div className="mt-3">
-							<pre className={CODE_PANEL}>{r.raw || ""}</pre>
+							<div className="scrollbar-thin max-h-80 overflow-y-auto">
+								<MarkdownOutput content={jsonFence(r.raw || "")} className="text-[0.8125rem]" />
+							</div>
 						</div>
 					)}
 				</>

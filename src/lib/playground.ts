@@ -1,13 +1,5 @@
-// Pure logic for the Structured Output Playground: presets, a minimal JSON
-// Schema validator (enough for the playground's schemas), and monochrome JSON
-// syntax highlighting. No DOM access.
-
-function escapeHtml(s: string): string {
-	return s.replace(
-		/[&<>"']/g,
-		(c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string,
-	);
-}
+// Pure logic for the Structured Output Playground: presets and a minimal JSON
+// Schema validator (enough for the playground's schemas). No DOM access.
 
 export type TPreset = {
 	id: string;
@@ -226,30 +218,3 @@ function walk(schema: Record<string, unknown>, value: unknown, path: string, iss
 	}
 }
 
-// Monochrome highlighting to match the app's design system: dim keys, bright
-// values, muted literals. Returns trusted HTML (all content escaped).
-export function highlightJson(value: unknown): string {
-	const json = JSON.stringify(value, null, 2);
-	const re = /("(?:\\.|[^"\\])*"(?:\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
-	const tokens: { t: string; cls: string }[] = [];
-	let last = 0;
-	let m: RegExpExecArray | null;
-	while ((m = re.exec(json)) !== null) {
-		if (m.index > last) tokens.push({ t: json.slice(last, m.index), cls: "" });
-		const tok = m[0];
-		let cls = "text-zinc-300";
-		if (tok.startsWith('"')) {
-			cls = /:$/.test(tok) ? "text-zinc-400" : "text-white";
-		} else if (tok === "true" || tok === "false") {
-			cls = "text-zinc-200";
-		} else if (tok === "null") {
-			cls = "text-zinc-500";
-		}
-		tokens.push({ t: tok, cls });
-		last = re.lastIndex;
-	}
-	if (last < json.length) tokens.push({ t: json.slice(last), cls: "" });
-	return tokens
-		.map((tk) => (tk.cls ? `<span class="${tk.cls}">${escapeHtml(tk.t)}</span>` : escapeHtml(tk.t)))
-		.join("");
-}

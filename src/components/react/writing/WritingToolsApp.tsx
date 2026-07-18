@@ -51,14 +51,16 @@ const STATUS_META: Record<TWritingAvailability, { dot: string; text: string; sho
 };
 
 const SNIPPET = [
-	'<span class="text-zinc-500">// Writer &amp; Rewriter: origin trial · Proofreader: origin trial / flag</span>',
-	'<span class="text-zinc-400">const</span> writer = <span class="text-zinc-400">await</span> Writer.<span class="text-white">create</span>({ tone: <span class="text-white">"formal"</span>, length: <span class="text-white">"short"</span> });',
-	'<span class="text-zinc-400">for await</span> (<span class="text-zinc-400">const</span> chunk <span class="text-zinc-400">of</span> writer.<span class="text-white">writeStreaming</span>(prompt)) { &hellip; }',
+	"```js",
+	"// Writer & Rewriter: origin trial · Proofreader: origin trial / flag",
+	'const writer = await Writer.create({ tone: "formal", length: "short" });',
+	"for await (const chunk of writer.writeStreaming(prompt)) { … }",
 	"",
-	'<span class="text-zinc-400">const</span> rewriter = <span class="text-zinc-400">await</span> Rewriter.<span class="text-white">create</span>({ tone: <span class="text-white">"more-casual"</span> });',
-	'<span class="text-zinc-400">const</span> proofreader = <span class="text-zinc-400">await</span> Proofreader.<span class="text-white">create</span>();',
-	'<span class="text-zinc-400">const</span> { correctedInput, corrections } = <span class="text-zinc-400">await</span> proofreader.<span class="text-white">proofread</span>(text);',
-	'<span class="text-zinc-500">// corrections[i] &rarr; { startIndex, endIndex, correction, types }</span>',
+	'const rewriter = await Rewriter.create({ tone: "more-casual" });',
+	"const proofreader = await Proofreader.create();",
+	"const { correctedInput, corrections } = await proofreader.proofread(text);",
+	"// corrections[i] → { startIndex, endIndex, correction, types }",
+	"```",
 ].join("\n");
 
 function Badge({ tone, icon, label }: { tone: "ok" | "warn" | "muted"; icon?: string; label: string }) {
@@ -733,10 +735,7 @@ export default function WritingToolsApp() {
 						</p>
 					</div>
 					<div className="lg:col-span-2">
-						<pre
-							className="scrollbar-thin overflow-x-auto rounded-xl bg-zinc-900 p-4 font-mono text-[0.8125rem]/6 text-zinc-100 ring-1 ring-white/10"
-							dangerouslySetInnerHTML={{ __html: SNIPPET }}
-						></pre>
+						<MarkdownOutput content={SNIPPET} className="text-[0.8125rem]" />
 					</div>
 				</section>
 

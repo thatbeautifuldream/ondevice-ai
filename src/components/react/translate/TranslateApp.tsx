@@ -46,15 +46,17 @@ const SAMPLES: TSample[] = [
 const DEBOUNCE_MS = 400;
 
 const SNIPPET = [
-	'<span class="text-zinc-500">// Chrome 138+ · both APIs are stable, no flags needed</span>',
-	'<span class="text-zinc-400">const</span> [{ detectedLanguage }] = <span class="text-zinc-400">await</span> detector.<span class="text-white">detect</span>(text);',
-	'<span class="text-zinc-400">const</span> translator = <span class="text-zinc-400">await</span> Translator.<span class="text-white">create</span>({',
-	'  sourceLanguage: detectedLanguage, <span class="text-zinc-500">// e.g. "es"</span>',
-	'  targetLanguage: <span class="text-white">"en"</span>,',
+	"```js",
+	"// Chrome 138+ · both APIs are stable, no flags needed",
+	"const [{ detectedLanguage }] = await detector.detect(text);",
+	"const translator = await Translator.create({",
+	'  sourceLanguage: detectedLanguage, // e.g. "es"',
+	'  targetLanguage: "en",',
 	"});",
-	'<span class="text-zinc-400">for await</span> (<span class="text-zinc-400">const</span> chunk <span class="text-zinc-400">of</span> translator.<span class="text-white">translateStreaming</span>(text)) {',
+	"for await (const chunk of translator.translateStreaming(text)) {",
 	"  output += chunk;",
 	"}",
+	"```",
 ].join("\n");
 
 export default function TranslateApp() {
@@ -547,10 +549,7 @@ export default function TranslateApp() {
 						</p>
 					</div>
 					<div className="lg:col-span-2">
-						<pre
-							className="scrollbar-thin overflow-x-auto rounded-xl bg-zinc-900 p-4 font-mono text-[0.8125rem]/6 text-zinc-100 ring-1 ring-white/10"
-							dangerouslySetInnerHTML={{ __html: SNIPPET }}
-						></pre>
+						<MarkdownOutput content={SNIPPET} className="text-[0.8125rem]" />
 					</div>
 				</section>
 
