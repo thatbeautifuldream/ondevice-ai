@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { TARGET_LANGUAGES, TranslateEngine, languageName } from "../../../lib/translate";
 import type { TDetection } from "../../../lib/translate";
+import { SpeechEngine } from "../../../lib/speech";
+import type { TSpeechVoice } from "../../../lib/speech";
 import { Icon } from "../Icon";
 import { MarkdownOutput } from "../MarkdownOutput";
 
@@ -72,6 +74,9 @@ export default function TranslateApp() {
 	const [downloading, setDownloading] = useState(false);
 	const [downloadProgress, setDownloadProgress] = useState(0);
 	const [copied, setCopied] = useState(false);
+	const [speechSupported, setSpeechSupported] = useState(false);
+	const [speaking, setSpeaking] = useState<"source" | "output" | null>(null);
+	const [speechVoice, setSpeechVoice] = useState<TSpeechVoice | null>(null);
 
 	const runIdRef = useRef(0);
 	const abortRef = useRef<AbortController | null>(null);
@@ -90,14 +95,22 @@ export default function TranslateApp() {
 	}
 	const engine = engineRef.current;
 
+	const speechRef = useRef<SpeechEngine | null>(null);
+	if (!speechRef.current) speechRef.current = new SpeechEngine();
+	const speech = speechRef.current;
+
 	useEffect(() => {
 		setSupported(TranslateEngine.supported());
+		setSpeechSupported(SpeechEngine.supported());
 		// Default to translating into the user's own language, unless that's
 		// English already — then Spanish makes the demo more interesting.
 		const base = navigator.language.split("-")[0];
 		if (base && base !== "en" && TARGET_LANGUAGES.some((l) => l === base)) setTargetLang(base);
-		return () => engine.destroy();
-	}, [engine]);
+		return () => {
+			engine.destroy();
+			speech.stop();
+		};
+	}, [engine, speech]);
 
 	// The core loop: detect the source language, then stream the translation.
 	// Every (text, target) change starts a fresh run and cancels the previous
@@ -243,6 +256,38 @@ export default function TranslateApp() {
 		}
 	};
 
+	// speak() needs a user gesture, so this only ever runs from a click.
+	const toggleSpeak = (which: "source" | "output") => {
+		if (speaking === which) {
+			speech.stop();
+			setSpeaking(null);
+			setSpeechVoice(null);
+			return;
+		}
+		const text = which === "source" ? inputText.trim() : output;
+		const lang = which === "source" ? detection?.language : targetLang;
+		if (!text || !lang) return;
+		const clear = () => {
+			setSpeaking((s) => (s === which ? null : s));
+			setSpeechVoice(null);
+		};
+		setSpeaking(which);
+		void speech.speak({ text, lang, onVoice: setSpeechVoice, onEnd: clear, onError: clear });
+	};
+
+	const readAloudLabel = speechVoice
+		? speechVoice.local
+			? "Reading aloud · on-device voice"
+			: "Reading aloud · network voice — text leaves your device for speech only"
+		: "Reading aloud…";
+
+	const speakBtnClass = (active: boolean) =>
+		`relative flex size-8 items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+			active
+				? "text-accent hover:bg-zinc-950/5 hover:text-accent-hover dark:hover:bg-white/10"
+				: "text-zinc-500 hover:bg-zinc-950/5 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-200"
+		}`;
+
 	const downloadPct = Math.round(Math.max(0, Math.min(1, downloadProgress)) * 100);
 	const canSwap = Boolean(detection?.language && output && status === "done");
 
@@ -294,7 +339,7 @@ export default function TranslateApp() {
 
 			<main className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
 				<p className="font-mono text-xs font-medium tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
-					Chrome Translator API · Language Detector API
+					Chrome Translator API · Language Detector API · Web Speech API
 				</p>
 				<h1 className="mt-2 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
 					Translate without leaving your device
@@ -375,6 +420,18 @@ export default function TranslateApp() {
 											? "Language not recognized"
 											: ""}
 							</span>
+							{speechSupported && (
+								<button
+									type="button"
+									onClick={() => toggleSpeak("source")}
+									disabled={!inputText.trim() || !detection?.language}
+									aria-label={speaking === "source" ? "Stop reading" : "Read source text aloud"}
+									className={speakBtnClass(speaking === "source")}
+								>
+									<span className="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2 pointer-fine:hidden" aria-hidden="true"></span>
+									<Icon name={speaking === "source" ? "stop" : "speaker-wave"} className="size-4 shrink-0" />
+								</button>
+							)}
 						</div>
 
 						<label htmlFor="tr-input" className="sr-only">
@@ -391,7 +448,11 @@ export default function TranslateApp() {
 							className="scrollbar-thin mt-3 w-full flex-1 resize-y rounded-xl bg-zinc-50 px-3 py-2 text-sm text-zinc-900 ring-1 ring-zinc-950/10 placeholder:text-zinc-400 focus:ring-2 focus:ring-accent/40 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 sm:text-base dark:bg-white/5 dark:text-zinc-100 dark:ring-white/10 dark:placeholder:text-zinc-500"
 						></textarea>
 						<p className="mt-1.5 text-xs text-zinc-400 tabular-nums dark:text-zinc-500">
-							{inputText.length > 0 ? `${inputText.length} characters` : "Translation runs automatically as you type."}
+							{speaking === "source"
+								? readAloudLabel
+								: inputText.length > 0
+									? `${inputText.length} characters`
+									: "Translation runs automatically as you type."}
 						</p>
 					</section>
 
@@ -433,6 +494,18 @@ export default function TranslateApp() {
 										<path d="M.5.5 4 4 7.5.5" stroke="currentcolor" />
 									</svg>
 								</span>
+								{speechSupported && (
+									<button
+										type="button"
+										onClick={() => toggleSpeak("output")}
+										disabled={!output}
+										aria-label={speaking === "output" ? "Stop reading" : "Read translation aloud"}
+										className={speakBtnClass(speaking === "output")}
+									>
+										<span className="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2 pointer-fine:hidden" aria-hidden="true"></span>
+										<Icon name={speaking === "output" ? "stop" : "speaker-wave"} className="size-4 shrink-0" />
+									</button>
+								)}
 								<button
 									type="button"
 									onClick={swap}
@@ -531,7 +604,7 @@ export default function TranslateApp() {
 						</div>
 
 						<p className="mt-1.5 text-xs text-zinc-400 tabular-nums dark:text-zinc-500">
-							{status === "translating" ? "Translating…" : status === "done" && latencyMs !== null ? `Done in ${latencyMs} ms` : " "}
+							{speaking === "output" ? readAloudLabel : status === "translating" ? "Translating…" : status === "done" && latencyMs !== null ? `Done in ${latencyMs} ms` : " "}
 						</p>
 					</section>
 				</div>
