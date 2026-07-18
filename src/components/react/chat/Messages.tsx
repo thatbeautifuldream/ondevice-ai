@@ -200,7 +200,7 @@ export const Message = memo(
 		if (msg.role === "user") {
 			return (
 				<li className="flex justify-end">
-					<div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-base text-accent-fg shadow-sm dark:shadow-none">
+					<div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-zinc-100 px-4 py-2.5 text-base text-zinc-900 dark:bg-white/10 dark:text-zinc-100">
 						{msg.content}
 					</div>
 				</li>
@@ -287,11 +287,11 @@ export function EmptyState({ onSuggestion }: { onSuggestion: (prompt: string) =>
 			<div className="flex size-12 items-center justify-center text-accent">
 				<Icon name="sparkles" className="size-7" />
 			</div>
-			<h1 className="mt-4 text-center text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
-				Chat with Gemini Nano
+			<h1 className="mt-4 max-w-[40ch] text-center text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
+				Chat with on-device AI
 			</h1>
-			<p className="mt-2 max-w-md text-center text-pretty text-sm text-zinc-500 sm:text-base dark:text-zinc-400">
-				Private, on-device AI. Your conversations never leave your computer. The model runs entirely in Chrome.
+			<p className="mt-2 max-w-[56ch] text-center text-pretty text-sm text-zinc-500 sm:text-base dark:text-zinc-400">
+				Use the browser's built-in model or download an open one. Everything runs on your device and never leaves it.
 			</p>
 
 			<div className="mt-8 grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
