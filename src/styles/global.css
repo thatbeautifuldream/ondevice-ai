@@ -17,10 +17,13 @@
 	--resize-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* transitions.dev — Theme wipe tokens (diagonal soft-edge sweep). */
+/* transitions.dev — Theme wipe + page transition tokens. */
 :root {
-	--theme-wipe-dur: 900ms;
-	--theme-wipe-ease: cubic-bezier(0.22, 1, 0.36, 1);
+	--wipe-dur: 900ms;
+	--wipe-ease: cubic-bezier(0.22, 1, 0.36, 1);
+	--page-out-dur: 150ms;
+	--page-in-dur: 400ms;
+	--page-in-delay: 100ms;
 }
 
 /* Monochrome accent tokens — single source of truth for the app's accent color.
@@ -136,27 +139,80 @@ body {
 	color-scheme: dark;
 }
 
-/* Theme toggle: suppress the default view-transition crossfade and stack the
-   new snapshot on top. setTheme() slides the oversized gradient mask from the
-   bottom-left corner to the top-right; the wide transparent band in the
-   gradient is what gives the wipe its soft blurred edge. */
-html.theme-transition::view-transition-old(root),
-html.theme-transition::view-transition-new(root) {
-	animation: none;
+/* Both wipe variants stack the still old snapshot under the incoming one. */
+html::view-transition-old(root) {
 	mix-blend-mode: normal;
-}
-
-html.theme-transition::view-transition-old(root) {
 	z-index: 1;
 }
 
-html.theme-transition::view-transition-new(root) {
+html::view-transition-new(root) {
+	mix-blend-mode: normal;
 	z-index: 2;
+}
+
+/* Page navigation: a quiet cross-blur — the old page blurs and fades out
+   fast, then the new one rises in softly. Kept deliberately lighter than the
+   theme wipe below so navigation feels quick, not ceremonial. Gated on
+   :not(.theme-transition) so these rules can never match while a theme
+   toggle's view transition is running. */
+@keyframes page-out {
+	to {
+		opacity: 0;
+		filter: blur(2px);
+	}
+}
+
+@keyframes page-in {
+	from {
+		opacity: 0;
+		filter: blur(3px);
+		transform: translateY(12px);
+	}
+}
+
+html:not(.theme-transition)::view-transition-old(root) {
+	animation: page-out var(--page-out-dur) ease-out both;
+}
+
+html:not(.theme-transition)::view-transition-new(root) {
+	animation: page-in var(--page-in-dur) var(--wipe-ease) var(--page-in-delay)
+		both;
+}
+
+/* Theme toggle (html.theme-transition, set by setTheme): the old snapshot
+   holds still underneath while the new theme is revealed through an oversized
+   gradient mask sweeping from the bottom-left corner to the top-right; the
+   wide transparent band in the gradient is what gives the wipe its soft
+   blurred edge. */
+@keyframes wipe-diagonal {
+	from {
+		mask-position: 100% 0%;
+	}
+	to {
+		mask-position: 0% 100%;
+	}
+}
+
+html.theme-transition::view-transition-old(root) {
+	animation: none;
+}
+
+html.theme-transition::view-transition-new(root) {
 	mask-image: linear-gradient(45deg, #000 35%, transparent 65%);
 	mask-size: 300% 300%;
 	mask-repeat: no-repeat;
-	mask-position: 100% 0%;
 	will-change: mask-position;
+	animation: wipe-diagonal var(--wipe-dur) var(--wipe-ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	html:not(.theme-transition)::view-transition-old(root),
+	html:not(.theme-transition)::view-transition-new(root),
+	html.theme-transition::view-transition-old(root),
+	html.theme-transition::view-transition-new(root) {
+		animation: none;
+		mask-image: none;
+	}
 }
 
 /* Keyboard-accessible focus removal for mouse users on interactive controls. */

@@ -1,6 +1,8 @@
 export type TTheme = "light" | "dark";
 export type TThemePreference = TTheme | "system";
 
+let activeTransition: ViewTransition | null = null;
+
 function systemTheme(): TTheme {
 	return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
@@ -16,10 +18,9 @@ export function getThemePreference(): TThemePreference {
 	return stored === "light" || stored === "dark" ? stored : "system";
 }
 
-// Theme switch via the View Transition API: the new theme wipes in behind a
-// soft-edged diagonal band sweeping from the bottom-left corner to the
-// top-right. The band is a gradient mask (see global.css); animating its
-// position slides the blurred edge across the viewport.
+// Theme switch via the View Transition API. The wipe animation lives in
+// global.css; the theme-transition class selects its diagonal variant over
+// the left-to-right one used for page navigations.
 export function setTheme(preference: TThemePreference): TTheme {
 	const root = document.documentElement;
 	const next: TTheme = preference === "system" ? systemTheme() : preference;
@@ -36,26 +37,19 @@ export function setTheme(preference: TThemePreference): TTheme {
 		return next;
 	}
 
-	const styles = getComputedStyle(root);
-	const duration = parseFloat(styles.getPropertyValue("--theme-wipe-dur")) || 900;
-	const easing =
-		styles.getPropertyValue("--theme-wipe-ease").trim() ||
-		"cubic-bezier(0.22, 1, 0.36, 1)";
-
 	root.classList.add("theme-transition");
 	const transition = document.startViewTransition(apply);
-	transition.ready.then(() => {
-		root.animate(
-			{ maskPosition: ["100% 0%", "0% 100%"] },
-			{
-				duration,
-				easing,
-				fill: "forwards",
-				pseudoElement: "::view-transition-new(root)",
-			},
-		);
+	activeTransition = transition;
+	// A rapid second toggle skips this transition and fires its finished
+	// callback while the new one is still running — only the latest
+	// transition may clean up the class, or the page-transition CSS takes
+	// over mid-wipe.
+	transition.finished.finally(() => {
+		if (activeTransition === transition) {
+			activeTransition = null;
+			root.classList.remove("theme-transition");
+		}
 	});
-	transition.finished.finally(() => root.classList.remove("theme-transition"));
 	return next;
 }
 
