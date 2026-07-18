@@ -137,10 +137,14 @@ export class TranslateEngine {
 	// Create (downloading the language pack if needed) and cache the translator
 	// for a pair. Chrome requires a user gesture to start a download, so the UI
 	// only calls this for "downloadable" pairs from a click handler.
+	// The run's abort signal is deliberately NOT forwarded to create():
+	// aborting a creation signal destroys the translator it created, which
+	// would poison the cache for every later run that reuses this pair.
 	async ensureTranslator(sourceLanguage: string, targetLanguage: string, signal?: AbortSignal): Promise<Translator> {
 		const key = `${sourceLanguage}:${targetLanguage}`;
 		const cached = this.translators.get(key);
 		if (cached) return cached;
+		signal?.throwIfAborted();
 
 		const availability = await this.pairAvailability(sourceLanguage, targetLanguage);
 		const needsDownload = availability === "downloadable" || availability === "downloading";
@@ -149,7 +153,6 @@ export class TranslateEngine {
 			const translator = await Translator.create({
 				sourceLanguage,
 				targetLanguage,
-				signal,
 				monitor: (m) => {
 					m.addEventListener("downloadprogress", (e: ProgressEvent) => {
 						this.hooks.onDownloadProgress?.(typeof e.loaded === "number" ? e.loaded : 0);
@@ -171,28 +174,40 @@ export class TranslateEngine {
 		signal?: AbortSignal;
 	}): AsyncGenerator<TTranslateEvent, void, void> {
 		const started = performance.now();
+		const key = `${options.sourceLanguage}:${options.targetLanguage}`;
 		let acc = "";
-		try {
-			const translator = await this.ensureTranslator(options.sourceLanguage, options.targetLanguage, options.signal);
-			const reader = translator.translateStreaming(options.text, { signal: options.signal }).getReader();
-			while (true) {
-				const { done, value } = await reader.read();
-				if (done) break;
-				if (value) {
-					acc += value;
-					yield { type: "chunk", content: acc };
+		for (let attempt = 0; attempt < 2; attempt++) {
+			acc = "";
+			try {
+				const translator = await this.ensureTranslator(options.sourceLanguage, options.targetLanguage, options.signal);
+				const reader = translator.translateStreaming(options.text, { signal: options.signal }).getReader();
+				while (true) {
+					const { done, value } = await reader.read();
+					if (done) break;
+					if (value) {
+						acc += value;
+						yield { type: "chunk", content: acc };
+					}
 				}
-			}
-		} catch (err) {
-			const e = err as DOMException;
-			if (e?.name === "AbortError") {
-				yield { type: "aborted", content: acc };
+			} catch (err) {
+				const e = err as DOMException;
+				if (e?.name === "AbortError") {
+					yield { type: "aborted", content: acc };
+					return;
+				}
+				// A cached translator that was destroyed (e.g. by an aborted or
+				// unmounted earlier run) throws InvalidStateError: evict it and
+				// retry once with a fresh instance.
+				if (attempt === 0 && e?.name === "InvalidStateError") {
+					this.translators.delete(key);
+					continue;
+				}
+				yield { type: "error", message: friendlyError(e) };
 				return;
 			}
-			yield { type: "error", message: friendlyError(e) };
+			yield { type: "done", content: acc, latencyMs: Math.round(performance.now() - started) };
 			return;
 		}
-		yield { type: "done", content: acc, latencyMs: Math.round(performance.now() - started) };
 	}
 
 	destroy(): void {
