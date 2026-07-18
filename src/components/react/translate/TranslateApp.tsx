@@ -278,7 +278,7 @@ export default function TranslateApp() {
 	const readAloudLabel = speechVoice
 		? speechVoice.local
 			? "Reading aloud · on-device voice"
-			: "Reading aloud · network voice — text leaves your device for speech only"
+			: "Reading aloud · network voice, text leaves your device for speech only"
 		: "Reading aloud…";
 
 	const speakBtnClass = (active: boolean) =>
