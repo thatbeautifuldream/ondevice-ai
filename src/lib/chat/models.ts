@@ -14,11 +14,21 @@ export type TModelInfo = {
 
 export const BUILT_IN_MODEL_ID = "built-in";
 
+// The Prompt API never reports which model backs it, so the name is derived
+// from the browser: Chrome ships Gemini Nano, Edge ships Phi-4-mini.
+export function builtInModelName(): string {
+	if (typeof navigator === "undefined") return "Browser built-in";
+	const ua = navigator.userAgent;
+	if (ua.includes("Edg/")) return "Phi-4-mini";
+	if (ua.includes("Chrome/")) return "Gemini Nano";
+	return "Browser built-in";
+}
+
 export const BUILT_IN_MODEL: TModelInfo = {
 	id: BUILT_IN_MODEL_ID,
 	kind: "prompt-api",
-	label: "Browser built-in",
-	description: "The browser's own model (Gemini Nano in Chrome, Phi in Edge), downloaded and managed by the browser.",
+	label: builtInModelName(),
+	description: "The browser's own model, downloaded and managed by the browser itself.",
 };
 
 export function supportsWebGPU(): boolean {
