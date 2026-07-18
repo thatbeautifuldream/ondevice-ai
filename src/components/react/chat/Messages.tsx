@@ -1,11 +1,76 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Icon } from "../Icon";
 import { MarkdownOutput } from "../MarkdownOutput";
 import type { TChatMessage } from "../../../lib/chat/types";
+import { SpeechEngine, speakableText } from "../../../lib/speech";
 
 // ---------------------------------------------------------------------------
-// Message actions (copy / regenerate)
+// Message actions (copy / read aloud / regenerate)
 // ---------------------------------------------------------------------------
+
+// One engine for the whole thread. `owner` tracks which button is speaking so
+// starting one message silences the other button's state, and an unmounting
+// button only stops speech it owns.
+const speech = new SpeechEngine();
+type TSpeechOwner = { silence: () => void };
+let owner: TSpeechOwner | null = null;
+
+function SpeakButton({ text }: { text: string }) {
+	const [speaking, setSpeaking] = useState(false);
+	const ownerRef = useRef<TSpeechOwner | null>(null);
+
+	// Stop speech this button started if it unmounts mid-read.
+	useEffect(
+		() => () => {
+			if (ownerRef.current && owner === ownerRef.current) {
+				speech.stop();
+				owner = null;
+			}
+		},
+		[],
+	);
+
+	const toggle = () => {
+		if (speaking) {
+			speech.stop();
+			setSpeaking(false);
+			owner = null;
+			ownerRef.current = null;
+			return;
+		}
+		owner?.silence();
+		const me: TSpeechOwner = { silence: () => setSpeaking(false) };
+		owner = me;
+		ownerRef.current = me;
+		setSpeaking(true);
+		const clear = () => {
+			setSpeaking(false);
+			if (owner === me) owner = null;
+		};
+		void speech.speak({ text: speakableText(text), onEnd: clear, onError: clear });
+	};
+
+	return (
+		<button
+			type="button"
+			onClick={toggle}
+			className="relative flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-zinc-500 transition-colors hover:bg-zinc-950/5 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-200"
+		>
+			<span className="absolute top-1/2 left-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2" aria-hidden="true"></span>
+			{speaking ? (
+				<span className="flex items-center gap-1.5 text-accent">
+					<Icon name="stop" />
+					Stop
+				</span>
+			) : (
+				<span className="flex items-center gap-1.5">
+					<Icon name="speaker-wave" />
+					Read aloud
+				</span>
+			)}
+		</button>
+	);
+}
 
 function CopyButton({ text }: { text: string }) {
 	const [copied, setCopied] = useState(false);
@@ -102,6 +167,7 @@ export const Message = memo(
 					{showActions && (
 						<div className="mt-2 flex items-center gap-1">
 							<CopyButton text={msg.content} />
+							{!msg.streaming && SpeechEngine.supported() && <SpeakButton text={msg.content} />}
 							{isLast && !msg.streaming && (
 								<button
 									type="button"

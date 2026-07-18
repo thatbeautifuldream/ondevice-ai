@@ -1,7 +1,7 @@
-// Read-aloud for the Translate playground, built on the Web Speech API's
-// SpeechSynthesis (Baseline since 2018). Follows the TranslateEngine pattern:
-// no React, per-call callbacks, all synthesis happens on-device when a local
-// voice exists.
+// Shared read-aloud engine built on the Web Speech API's SpeechSynthesis
+// (Baseline since 2018). Follows the TranslateEngine pattern: no React,
+// per-call callbacks, all synthesis happens on-device when a local voice
+// exists.
 
 export type TSpeechVoice = {
 	name: string;
@@ -10,11 +10,28 @@ export type TSpeechVoice = {
 
 export type TSpeakOptions = {
 	text: string;
-	lang: string; // BCP 47, e.g. "es" or "es-ES"
+	lang?: string; // BCP 47, e.g. "es" or "es-ES"; omitted = detect from the text
 	onVoice?: (voice: TSpeechVoice | null) => void; // which voice is speaking; re-fires on fallback
 	onEnd?: () => void;
 	onError?: (message: string) => void;
 };
+
+// Flatten markdown to something worth hearing: drop code blocks and syntax,
+// keep link labels and the prose.
+export function speakableText(markdown: string): string {
+	return markdown
+		.replace(/```[\s\S]*?(```|$)/g, " ")
+		.replace(/`([^`]+)`/g, "$1")
+		.replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+		.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+		.replace(/^#{1,6}\s+/gm, "")
+		.replace(/(\*\*|__)(.*?)\1/g, "$2")
+		.replace(/(\*|_)([^*_\n]+)\1/g, "$2")
+		.replace(/^\s*[-*+]\s+/gm, "")
+		.replace(/^\s*>\s?/gm, "")
+		.replace(/\|/g, " ")
+		.trim();
+}
 
 // Known low-quality synthesizers: the macOS novelty voices plus the Eloquence
 // set (Eddy, Flo, Grandma…) sound robotic; never pick them over alternatives.
@@ -50,6 +67,7 @@ export class SpeechEngine {
 	// Chrome drops events on GC'd utterances, so hold the active ones.
 	private active: SpeechSynthesisUtterance[] = [];
 	private session = 0;
+	private detector: LanguageDetector | null = null;
 
 	static supported(): boolean {
 		try {
@@ -104,22 +122,38 @@ export class SpeechEngine {
 		return best;
 	}
 
+	// When no language is given (e.g. chat replies), detect it on-device so
+	// voice picking still works; fall back to the browser's own language.
+	private async resolveLang(text: string, lang?: string): Promise<string> {
+		if (lang) return lang;
+		try {
+			if (typeof LanguageDetector !== "undefined") {
+				this.detector ??= await LanguageDetector.create();
+				const [top] = await this.detector.detect(text);
+				if (top?.detectedLanguage && top.detectedLanguage !== "und") return top.detectedLanguage;
+			}
+		} catch {
+			/* fall through */
+		}
+		return typeof navigator !== "undefined" ? navigator.language : "en";
+	}
+
 	// Must be called from a user gesture: Chrome rejects speak() with
 	// "not-allowed" before the page has ever been activated.
 	async speak(options: TSpeakOptions): Promise<void> {
 		if (!SpeechEngine.supported()) return;
 		this.stop();
-		await this.ensureVoices();
+		const [lang] = await Promise.all([this.resolveLang(options.text, options.lang), this.ensureVoices()]);
 
 		// Offline: network voices produce silence or errors, go straight local.
 		const offline = typeof navigator !== "undefined" && navigator.onLine === false;
-		const voice = this.pickVoice(options.lang, offline);
+		const voice = this.pickVoice(lang, offline);
 		options.onVoice?.(voice ? { name: voice.name, local: voice.localService } : null);
-		this.start(options, voice, false);
+		this.start(options, lang, voice, false);
 	}
 
-	private start(options: TSpeakOptions, voice: SpeechSynthesisVoice | null, isRetry: boolean): void {
-		const { text, lang, onVoice, onEnd, onError } = options;
+	private start(options: TSpeakOptions, lang: string, voice: SpeechSynthesisVoice | null, isRetry: boolean): void {
+		const { text, onVoice, onEnd, onError } = options;
 		const session = ++this.session;
 		this.active = [];
 		const chunks = !voice || voice.localService ? [text] : splitChunks(text);
@@ -152,7 +186,7 @@ export class SpeechEngine {
 					const local = this.pickVoice(lang, true);
 					if (local) {
 						onVoice?.({ name: local.name, local: true });
-						this.start(options, local, true);
+						this.start(options, lang, local, true);
 						return;
 					}
 				}
