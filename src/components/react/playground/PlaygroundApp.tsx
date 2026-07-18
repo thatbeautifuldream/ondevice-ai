@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChatAgent } from "../../../lib/chat/agent";
 import type { TAvailability } from "../../../lib/chat/agent";
+import { BUILT_IN_MODEL_ID } from "../../../lib/chat/models";
 import { PRESETS, validate } from "../../../lib/playground";
 import type { TIssue } from "../../../lib/playground";
 import { Icon } from "../Icon";
@@ -109,7 +110,7 @@ export default function PlaygroundApp() {
 	const agentRef = useRef<ChatAgent | null>(null);
 	if (!agentRef.current) {
 		agentRef.current = new ChatAgent({
-			settings: () => ({ systemPrompt: "", temperature: 1, topK: 3 }),
+			settings: () => ({ systemPrompt: "", temperature: 1, topK: 3, modelId: BUILT_IN_MODEL_ID }),
 			hooks: {
 				onAvailabilityChange: (availability) => setAvailability(availability),
 				onDownloadStart: () => {

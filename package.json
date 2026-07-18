@@ -15,6 +15,7 @@
   "dependencies": {
     "@astrojs/react": "^6.0.1",
     "@astrojs/sitemap": "^3.7.3",
+    "@mlc-ai/web-llm": "^0.2.84",
     "@streamdown/cjk": "^1.0.3",
     "@streamdown/code": "^1.1.1",
     "@streamdown/math": "^1.0.2",

@@ -37,4 +37,5 @@ export type TSettings = {
 	systemPrompt: string;
 	temperature: number;
 	topK: number;
+	modelId: string;
 };

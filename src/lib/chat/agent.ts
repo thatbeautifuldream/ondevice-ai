@@ -1,3 +1,5 @@
+import { getProvider } from "./models";
+import type { TModelSession, TSessionPromptOptions } from "./provider";
 import * as store from "./store";
 import type { TChatMessage, TConversation, TInitialPrompt, TPromptTurn, TSettings } from "./types";
 
@@ -50,13 +52,13 @@ export type TObjectStreamEvent =
 	| { type: "aborted"; content: string }
 	| { type: "error"; message: string };
 
-// A live Prompt API session plus how many of the conversation's stored
+// A live model session plus how many of the conversation's stored
 // messages its context reflects. A session is only ever reused when
 // `consumed` exactly matches the stored history it should contain; otherwise
 // it is destroyed and rebuilt from storage via initialPrompts (the Prompt API
 // "restore past session" pattern). This keeps model state deterministic.
 type TSessionRecord = {
-	session: LanguageModel;
+	session: TModelSession;
 	consumed: number;
 };
 
@@ -87,7 +89,7 @@ export class ChatAgent {
 	private readonly sessions = new Map<string, TSessionRecord>();
 	// History-free base session for one-shot runs; each streamText/streamObject
 	// call clones it so runs stay independent (the Prompt API clone pattern).
-	private scratch: LanguageModel | null = null;
+	private scratch: TModelSession | null = null;
 	// Summarizers are shared across conversations, cached by `${format}:${lang}`.
 	private readonly summarizers = new Map<string, Summarizer>();
 	private languageDetector: LanguageDetector | null = null;
@@ -132,10 +134,14 @@ export class ChatAgent {
 		this.hooks.onAvailabilityChange?.(next);
 	}
 
+	private provider() {
+		return getProvider(this.getSettings().modelId);
+	}
+
 	private async refreshAvailability(): Promise<void> {
 		let avail: TAvailability;
 		try {
-			avail = await LanguageModel.availability();
+			avail = await (await this.provider()).availability();
 		} catch {
 			avail = "unavailable";
 		}
@@ -143,19 +149,8 @@ export class ChatAgent {
 	}
 
 	private async detectParamSupport(): Promise<void> {
-		// params() is restricted to extension / origin-trial contexts.
 		try {
-			if (typeof LanguageModel.params === "function") {
-				const p = await LanguageModel.params();
-				if (p && typeof p.defaultTemperature === "number") {
-					this._params = {
-						defaultTemperature: p.defaultTemperature,
-						maxTemperature: p.maxTemperature ?? 2,
-						defaultTopK: p.defaultTopK ?? 3,
-						maxTopK: p.maxTopK ?? 128,
-					};
-				}
-			}
+			this._params = await (await this.provider()).params();
 		} catch {
 			this._params = null;
 		}
@@ -186,7 +181,7 @@ export class ChatAgent {
 	async *run(conv: TConversation, prompt: string, signal?: AbortSignal): AsyncGenerator<TAgentEvent, void, void> {
 		// Phase 1: restore or create a session that provably matches the stored
 		// history before this exchange.
-		let session: LanguageModel;
+		let session: TModelSession;
 		try {
 			session = await this.ensureSession(conv, 2, signal);
 		} catch (err) {
@@ -264,7 +259,7 @@ export class ChatAgent {
 	}): AsyncGenerator<TTextStreamEvent, void, void> {
 		const started = performance.now();
 		let acc = "";
-		let clone: LanguageModel | null = null;
+		let clone: TModelSession | null = null;
 		try {
 			const base = await this.ensureScratchSession(options.signal);
 			clone = await base.clone();
@@ -306,11 +301,11 @@ export class ChatAgent {
 	}): AsyncGenerator<TObjectStreamEvent, void, void> {
 		const started = performance.now();
 		let acc = "";
-		let clone: LanguageModel | null = null;
+		let clone: TModelSession | null = null;
 		try {
 			const base = await this.ensureScratchSession(options.signal);
 			clone = await base.clone();
-			const promptOptions: LanguageModelPromptOptions = { signal: options.signal };
+			const promptOptions: TSessionPromptOptions = { signal: options.signal };
 			if (options.schema) promptOptions.responseConstraint = options.schema;
 			const chunks = this.streamChunks(clone, options.prompt, promptOptions);
 			while (true) {
@@ -376,7 +371,7 @@ export class ChatAgent {
 	contextInfo(convId: string): TContextInfo | null {
 		const session = this.sessions.get(convId)?.session;
 		if (session && typeof session.contextWindow === "number" && session.contextWindow > 0) {
-			return { usage: session.contextUsage, window: session.contextWindow };
+			return { usage: session.contextUsage ?? 0, window: session.contextWindow };
 		}
 		return null;
 	}
@@ -412,7 +407,7 @@ export class ChatAgent {
 	// (but excluding) the last `excludeLastN` messages. A cached session is only
 	// reused when its `consumed` marker agrees; any divergence (abort, error,
 	// external edits) destroys it and rebuilds from storage.
-	private async ensureSession(conv: TConversation, excludeLastN = 0, signal?: AbortSignal): Promise<LanguageModel> {
+	private async ensureSession(conv: TConversation, excludeLastN = 0, signal?: AbortSignal): Promise<TModelSession> {
 		const expected = Math.max(0, conv.messages.length - excludeLastN);
 		const existing = this.sessions.get(conv.id);
 		if (existing && existing.consumed === expected) {
@@ -425,7 +420,7 @@ export class ChatAgent {
 
 	// Conversation session creation: raw create seeded from stored history,
 	// then bookkeeping (consumed marker, LRU eviction, overflow early-warning).
-	private async createSessionFor(conv: TConversation, excludeLastN = 0, signal?: AbortSignal): Promise<LanguageModel> {
+	private async createSessionFor(conv: TConversation, excludeLastN = 0, signal?: AbortSignal): Promise<TModelSession> {
 		const settings = this.getSettings();
 		const initialPrompts = store.buildInitialPrompts(conv, settings.systemPrompt, excludeLastN);
 		const session = await this.createRawSession(initialPrompts, signal);
@@ -436,24 +431,11 @@ export class ChatAgent {
 		return session;
 	}
 
-	// Bare Prompt API session creation shared by conversation and scratch
-	// sessions: download monitor, sampling params, availability bookkeeping.
-	private async createRawSession(initialPrompts: TInitialPrompt[], signal?: AbortSignal): Promise<LanguageModel> {
+	// Bare session creation shared by conversation and scratch sessions:
+	// provider resolution, download bookkeeping, sampling params.
+	private async createRawSession(initialPrompts: TInitialPrompt[], signal?: AbortSignal): Promise<TModelSession> {
 		const settings = this.getSettings();
-		const options: Record<string, unknown> = {
-			initialPrompts,
-			signal,
-			monitor: (m: CreateMonitor) => {
-				m.addEventListener("downloadprogress", (e: ProgressEvent) => {
-					const loaded = typeof e.loaded === "number" ? e.loaded : 0;
-					this.hooks.onDownloadProgress?.(loaded);
-				});
-			},
-		};
-		if (this._params) {
-			options.temperature = settings.temperature;
-			options.topK = settings.topK;
-		}
+		const provider = await this.provider();
 
 		const needsDownload = this._availability === "downloadable" || this._availability === "downloading";
 		if (needsDownload) {
@@ -462,7 +444,13 @@ export class ChatAgent {
 		}
 
 		try {
-			const session = await LanguageModel.create(options as LanguageModelCreateOptions);
+			const session = await provider.createSession({
+				initialPrompts,
+				signal,
+				temperature: this._params ? settings.temperature : undefined,
+				topK: this._params ? settings.topK : undefined,
+				onDownloadProgress: (fraction) => this.hooks.onDownloadProgress?.(fraction),
+			});
 			this.setAvailability("available");
 			this.hooks.onDownloadEnd?.();
 			return session;
@@ -472,7 +460,7 @@ export class ChatAgent {
 		}
 	}
 
-	private async ensureScratchSession(signal?: AbortSignal): Promise<LanguageModel> {
+	private async ensureScratchSession(signal?: AbortSignal): Promise<TModelSession> {
 		if (this.scratch) return this.scratch;
 		this.scratch = await this.createRawSession([], signal);
 		return this.scratch;
@@ -482,9 +470,9 @@ export class ChatAgent {
 	// each chunk and returning the final text. Shared streaming core for the
 	// agent loop and the one-shot primitives.
 	private async *streamChunks(
-		session: LanguageModel,
+		session: TModelSession,
 		prompt: string,
-		options: LanguageModelPromptOptions,
+		options: TSessionPromptOptions,
 	): AsyncGenerator<string, string, void> {
 		const stream = session.promptStreaming(prompt, options);
 		let acc = "";

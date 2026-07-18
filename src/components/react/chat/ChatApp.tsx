@@ -272,6 +272,8 @@ export default function ChatApp() {
 		setSettingsState(next);
 		store.saveSettings(next);
 		agent.invalidateSessions();
+		// Switching models changes availability and parameter support.
+		if (patch.modelId) void agent.boot();
 	};
 
 	const clearAll = () => {

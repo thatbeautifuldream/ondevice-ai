@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../Icon";
 import type { TModelParams } from "../../../lib/chat/agent";
+import { BUILT_IN_MODEL_ID, loadCatalog, supportsWebGPU, type TModelInfo } from "../../../lib/chat/models";
 import type { TSettings } from "../../../lib/chat/types";
 import { getThemePreference, setTheme, type TThemePreference } from "../../../lib/theme";
+
+function formatDownload(mb?: number): string {
+	if (typeof mb !== "number") return "No download";
+	return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`;
+}
 
 const THEME_OPTIONS = [
 	{ value: "light", label: "Light", icon: "sun" },
@@ -22,6 +28,26 @@ type TSettingsDialogProps = {
 export function SettingsDialog({ open, settings, modelParams, onClose, onChange, onClearAll }: TSettingsDialogProps) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
 	const [theme, setThemePreference] = useState<TThemePreference>("system");
+	const [models, setModels] = useState<TModelInfo[] | null>(null);
+	const [modelQuery, setModelQuery] = useState("");
+
+	// Refresh the catalog every time the dialog opens so cached/downloaded
+	// states stay current.
+	useEffect(() => {
+		if (!open) return;
+		let cancelled = false;
+		void loadCatalog().then((list) => {
+			if (!cancelled) setModels(list);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [open]);
+
+	const query = modelQuery.trim().toLowerCase();
+	const visibleModels = (models ?? []).filter(
+		(m) => m.id === BUILT_IN_MODEL_ID || !query || m.label.toLowerCase().includes(query),
+	);
 
 	useEffect(() => {
 		setThemePreference(getThemePreference());
@@ -84,6 +110,60 @@ export function SettingsDialog({ open, settings, modelParams, onClose, onChange,
 								{option.label}
 							</button>
 						))}
+					</div>
+				</div>
+
+				<div className="flex flex-col gap-2">
+					<span className="text-sm font-medium text-zinc-900 dark:text-white">Model</span>
+					<p className="text-sm text-zinc-500 dark:text-zinc-400">
+						{supportsWebGPU()
+							? "Every model runs fully on-device. WebLLM models download once and are cached by the browser."
+							: "This browser doesn't support WebGPU, so only the built-in model is available."}
+					</p>
+					{supportsWebGPU() && (
+						<input
+							type="search"
+							name="model-search"
+							aria-label="Search models"
+							placeholder="Search models…"
+							value={modelQuery}
+							onChange={(e) => setModelQuery(e.target.value)}
+							className="w-full rounded-lg bg-zinc-50 px-3 py-2 text-sm text-zinc-900 transition-shadow placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-accent/40 max-sm:text-base dark:bg-white/5 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+						/>
+					)}
+					<div className="scrollbar-thin max-h-72 divide-y divide-zinc-950/5 overflow-y-auto rounded-lg border border-zinc-950/10 dark:divide-white/5 dark:border-white/10">
+						{visibleModels.map((m) => (
+							<label
+								key={m.id}
+								className="flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm hover:bg-zinc-950/2.5 dark:hover:bg-white/5"
+							>
+								<span className="group inline-grid size-5 shrink-0 grid-cols-1 sm:size-4">
+									<input
+										type="radio"
+										name="model"
+										value={m.id}
+										checked={settings.modelId === m.id}
+										onChange={() => onChange({ modelId: m.id })}
+										className="col-start-1 row-start-1 appearance-none rounded-full border border-zinc-300 bg-white checked:border-accent checked:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent dark:border-white/10 dark:bg-white/5 dark:checked:border-accent dark:checked:bg-accent forced-colors:appearance-auto"
+									/>
+									<span className="pointer-events-none col-start-1 row-start-1 size-[round(down,40%,1px)] self-center justify-self-center rounded-full bg-white group-not-has-checked:opacity-0"></span>
+								</span>
+								<span className="min-w-0 flex-1">
+									<span className="block truncate font-medium text-zinc-900 dark:text-white">{m.label}</span>
+									{m.description && <span className="block text-zinc-500 dark:text-zinc-400">{m.description}</span>}
+								</span>
+								{m.cached && (
+									<span className="inline-flex shrink-0 items-center rounded-full bg-accent/10 px-2 py-0.5 font-medium text-accent">
+										Downloaded
+									</span>
+								)}
+								<span className="shrink-0 tabular-nums text-zinc-500 dark:text-zinc-400">{formatDownload(m.downloadMB)}</span>
+							</label>
+						))}
+						{models && visibleModels.length === 1 && query && (
+							<p className="px-3 py-2.5 text-sm text-zinc-500 dark:text-zinc-400">No models match “{modelQuery.trim()}”.</p>
+						)}
+						{!models && <p className="px-3 py-2.5 text-sm text-zinc-500 dark:text-zinc-400">Loading models…</p>}
 					</div>
 				</div>
 

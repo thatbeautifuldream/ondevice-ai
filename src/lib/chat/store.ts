@@ -1,3 +1,4 @@
+import { BUILT_IN_MODEL_ID } from "./models";
 import type { TConversation, TInitialPrompt, TSettings } from "./types";
 
 const STORAGE_CONVOS = "oda.conversations.v1";
@@ -26,12 +27,13 @@ export function loadSettings(): TSettings {
 				systemPrompt: typeof parsed.systemPrompt === "string" ? parsed.systemPrompt : DEFAULT_SYSTEM,
 				temperature: typeof parsed.temperature === "number" ? parsed.temperature : 1,
 				topK: typeof parsed.topK === "number" ? parsed.topK : 3,
+				modelId: typeof parsed.modelId === "string" && parsed.modelId ? parsed.modelId : BUILT_IN_MODEL_ID,
 			};
 		}
 	} catch {
 		/* ignore */
 	}
-	return { systemPrompt: DEFAULT_SYSTEM, temperature: 1, topK: 3 };
+	return { systemPrompt: DEFAULT_SYSTEM, temperature: 1, topK: 3, modelId: BUILT_IN_MODEL_ID };
 }
 
 export function saveSettings(settings: TSettings): void {
