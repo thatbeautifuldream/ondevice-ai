@@ -31,14 +31,34 @@ export default defineConfig({
       manifest: false,
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest,woff,woff2}'],
-        navigateFallback: 'index.html',
-        // Metadata routes must reach the network, not the cached app shell.
-        navigateFallbackDenylist: [/^\/og\//, /^\/og\.png$/, /^\/robots\.txt$/, /^\/sitemap-index\.xml$/, /^\/sitemap-0\.xml$/],
+        // MPA, not SPA: each route has its own precached HTML. precacheAndRoute
+        // (registered first) already serves /translate, /writing-tools, etc.
+        // directly from the precache. Setting navigateFallback would register
+        // a NavigationRoute that forces every unknown navigation onto a single
+        // shell (index.html), masking 404s and serving the chat page under the
+        // wrong URL. Null disables that route entirely.
+        navigateFallback: null,
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         // Anything larger is a WebLLM artifact fetched on demand, not precached.
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         runtimeCaching: [
+          {
+            // Safety net for same-origin document/navigations: try the network
+            // (so deep links to fresh routes still work online), then keep a
+            // copy so the route is offline-capable on the next visit. The
+            // precache already handles every built page; this only fills in
+            // anything that ships between builds.
+            urlPattern: ({ request, sameOrigin }) =>
+              sameOrigin && request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'navigate-cache',
+              expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [0, 200] },
+              networkTimeoutSeconds: 3,
+            },
+          },
           {
             urlPattern: /^https:\/\/rsms\.me\//i,
             handler: 'CacheFirst',

@@ -79,6 +79,15 @@ const structuredData = [
     <link rel="sitemap" href="/sitemap-index.xml" />
     <ClientRouter />
 
+    {/* Warm the SW precache for every route on the first paint of any page so
+        the whole app is offline-ready before the user navigates. ClientRouter's
+        own prefetch only fires for links visible in the DOM, so a user who
+        lands on /translate first would never prefetch /writing-tools. */}
+    <link rel="prefetch" href="/" as="document" />
+    <link rel="prefetch" href="/translate" as="document" />
+    <link rel="prefetch" href="/writing-tools" as="document" />
+    <link rel="prefetch" href="/structured-output" as="document" />
+
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={siteConfig.name} />
     <meta property="og:locale" content={siteConfig.locale} />
