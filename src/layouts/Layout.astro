@@ -2,11 +2,11 @@
 import "../styles/global.css";
 import { ClientRouter } from "astro:transitions";
 import {
-  absoluteUrl,
   buildWebApplicationSchema,
   buildWebPageSchema,
   buildWebsiteSchema,
   defaultKeywords,
+  getSiteOrigin,
   siteConfig,
 } from "../lib/seo";
 import type { TPageSeo } from "../lib/seo";
@@ -28,7 +28,7 @@ const {
 } = Astro.props;
 
 const canonicalUrl = new URL(Astro.url.pathname, Astro.site).href;
-const ogImage = absoluteUrl(image, Astro.site);
+const ogImage = new URL(image, `${getSiteOrigin(Astro.site)}/`).toString();
 const robots =
   "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1";
 const structuredData = [
@@ -114,7 +114,7 @@ const structuredData = [
 
     <!-- Inter variable font (official rsms distribution) -->
     <link rel="preconnect" href="https://rsms.me/" />
-    <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css" crossorigin="anonymous" />
 
     <!-- Microsoft Clarity -->
     <script is:inline>
@@ -150,6 +150,16 @@ const structuredData = [
           toggleTheme();
         }
       });
+    </script>
+
+    <script>
+      import { registerSW } from "virtual:pwa-register";
+
+      registerSW({ immediate: true });
+
+      // Persist storage so the multi-hundred-MB WebLLM model cache survives the
+      // browser's LRU eviction instead of being silently purged.
+      navigator.storage?.persist?.();
     </script>
   </body>
 </html>

@@ -3,6 +3,8 @@
 // Follows the ChatAgent pattern: no DOM access, hooks for UI notifications,
 // async generators for streaming.
 
+import { describeDomError, destroyQuiet } from "./errors";
+
 export type TTranslateAvailability = "unavailable" | "downloadable" | "downloading" | "available";
 
 // Target languages offered in the picker. The Translator API supports 40+
@@ -58,15 +60,16 @@ export type TTranslateHooks = {
 	onDownloadEnd?: () => void;
 };
 
+/** Map a thrown value to a translate-domain message via its DOMException name. */
 function friendlyError(e: unknown): string {
-	const err = e as DOMException;
-	if (err?.name === "NotSupportedError") {
-		return "This language pair isn't supported by the on-device translator.";
-	}
-	if (err?.name === "QuotaExceededError") {
-		return "The text is too long for the on-device translator. Try a shorter passage.";
-	}
-	return err?.message || "Something went wrong while translating.";
+	return describeDomError(
+		e,
+		{
+			NotSupportedError: "This language pair isn't supported by the on-device translator.",
+			QuotaExceededError: "The text is too long for the on-device translator. Try a shorter passage.",
+		},
+		"Something went wrong while translating.",
+	);
 }
 
 export class TranslateEngine {
@@ -80,11 +83,7 @@ export class TranslateEngine {
 	}
 
 	static supported(): boolean {
-		try {
-			return typeof Translator !== "undefined" && typeof LanguageDetector !== "undefined";
-		} catch {
-			return false;
-		}
+		return typeof Translator !== "undefined" && typeof LanguageDetector !== "undefined";
 	}
 
 	// -------------------------------------------------------------------------
@@ -211,21 +210,9 @@ export class TranslateEngine {
 	}
 
 	destroy(): void {
-		for (const [, t] of this.translators) {
-			try {
-				t.destroy();
-			} catch {
-				/* ignore */
-			}
-		}
+		for (const [, t] of this.translators) destroyQuiet(t);
 		this.translators.clear();
-		if (this.detector) {
-			try {
-				this.detector.destroy();
-			} catch {
-				/* ignore */
-			}
-			this.detector = null;
-		}
+		destroyQuiet(this.detector);
+		this.detector = null;
 	}
 }

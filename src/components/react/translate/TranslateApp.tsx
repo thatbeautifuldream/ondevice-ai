@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { TARGET_LANGUAGES, TranslateEngine, languageName } from "../../../lib/translate";
 import type { TDetection } from "../../../lib/translate";
+import { pillClass } from "../../../lib/ui";
 import { SpeechEngine } from "../../../lib/speech";
 import type { TSpeechVoice } from "../../../lib/speech";
 import { Icon } from "../Icon";
@@ -297,12 +298,11 @@ export default function TranslateApp() {
 		? [...TARGET_LANGUAGES]
 		: [targetLang, ...TARGET_LANGUAGES];
 
-	const sampleBtnClass = (active: boolean) => {
-		const base = "relative rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition-colors sm:text-sm";
-		return active
-			? `${base} bg-zinc-950/5 text-zinc-900 ring-zinc-950/15 dark:bg-white/10 dark:text-white dark:ring-white/20`
-			: `${base} bg-white text-zinc-600 ring-zinc-950/10 hover:bg-zinc-50 hover:text-zinc-900 dark:bg-white/5 dark:text-zinc-300 dark:ring-white/10 dark:hover:bg-white/10 dark:hover:text-white`;
-	};
+	const sampleBtnClass = (active: boolean) =>
+		pillClass(
+			"relative rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition-colors sm:text-sm",
+			active,
+		);
 
 	return (
 		<div className="min-h-dvh">

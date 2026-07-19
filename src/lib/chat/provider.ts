@@ -74,8 +74,8 @@ export class PromptApiProvider implements TModelProvider {
 
 	async params(): Promise<TModelParams | null> {
 		// params() is restricted to extension / origin-trial contexts.
-		try {
-			if (typeof LanguageModel.params === "function") {
+		if (typeof LanguageModel.params === "function") {
+			try {
 				const p = await LanguageModel.params();
 				if (p && typeof p.defaultTemperature === "number") {
 					return {
@@ -85,9 +85,9 @@ export class PromptApiProvider implements TModelProvider {
 						maxTopK: p.maxTopK ?? 128,
 					};
 				}
+			} catch {
+				// Restricted context: fall through to defaults.
 			}
-		} catch {
-			/* fall through */
 		}
 		return null;
 	}

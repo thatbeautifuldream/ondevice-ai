@@ -1,3 +1,4 @@
+import { describeDomError, destroyQuiet } from "../errors";
 import { getProvider } from "./models";
 import {
 	MAX_TOOL_STEPS,
@@ -88,15 +89,16 @@ const MAX_SESSIONS = 3;
 // session by summarizing older turns into initialPrompts.
 const AUTO_COMPACT_THRESHOLD = 0.8;
 
+/** Map a thrown value to a chat-domain message via its DOMException name. */
 function friendlyError(e: unknown): string {
-	const err = e as DOMException;
-	if (err?.name === "QuotaExceededError") {
-		return "The conversation exceeded the model's context window. Try starting a new chat.";
-	}
-	if (err?.name === "NotSupportedError") {
-		return "The model couldn't handle this request. Try rephrasing or starting a new chat.";
-	}
-	return err?.message || "Something went wrong while generating a response.";
+	return describeDomError(
+		e,
+		{
+			QuotaExceededError: "The conversation exceeded the model's context window. Try starting a new chat.",
+			NotSupportedError: "The model couldn't handle this request. Try rephrasing or starting a new chat.",
+		},
+		"Something went wrong while generating a response.",
+	);
 }
 
 export class ChatAgent {
@@ -176,16 +178,8 @@ export class ChatAgent {
 	}
 
 	private detectCompactionSupport(): void {
-		try {
-			this.supportsSummarizer = typeof Summarizer !== "undefined";
-		} catch {
-			this.supportsSummarizer = false;
-		}
-		try {
-			this.supportsLanguageDetector = typeof LanguageDetector !== "undefined";
-		} catch {
-			this.supportsLanguageDetector = false;
-		}
+		this.supportsSummarizer = typeof Summarizer !== "undefined";
+		this.supportsLanguageDetector = typeof LanguageDetector !== "undefined";
 	}
 
 	// -------------------------------------------------------------------------
@@ -375,11 +369,7 @@ export class ChatAgent {
 			yield { type: "error", message: friendlyError(e) };
 			return;
 		} finally {
-			try {
-				clone?.destroy();
-			} catch {
-				/* ignore */
-			}
+			destroyQuiet(clone);
 		}
 		yield { type: "done", content: acc, latencyMs: Math.round(performance.now() - started) };
 	}
@@ -419,11 +409,7 @@ export class ChatAgent {
 			yield { type: "error", message: friendlyError(e) };
 			return;
 		} finally {
-			try {
-				clone?.destroy();
-			} catch {
-				/* ignore */
-			}
+			destroyQuiet(clone);
 		}
 		const latencyMs = Math.round(performance.now() - started);
 		try {
@@ -441,23 +427,13 @@ export class ChatAgent {
 		const record = this.sessions.get(id);
 		if (!record) return;
 		this.sessions.delete(id);
-		try {
-			record.session.destroy();
-		} catch {
-			/* ignore */
-		}
+		destroyQuiet(record.session);
 	}
 
 	invalidateSessions(): void {
 		for (const id of [...this.sessions.keys()]) this.destroySession(id);
-		if (this.scratch) {
-			try {
-				this.scratch.destroy();
-			} catch {
-				/* ignore */
-			}
-			this.scratch = null;
-		}
+		destroyQuiet(this.scratch);
+		this.scratch = null;
 		this.hooks.onContextChange?.();
 	}
 
@@ -677,7 +653,10 @@ export class ChatAgent {
 				continue;
 			}
 			try {
-				const summarizer = await this.getSummarizer(looksLikeMarkdown(trimmed) ? "markdown" : "plain-text", lang);
+				const summarizer = await this.getSummarizer(
+					/(?:^#{1,6} |^[-*+] |\d+\. |\*\*|__|\[.+?\]\(|^> |^```)/m.test(trimmed) ? "markdown" : "plain-text",
+					lang,
+				);
 				if (!summarizer) {
 					result += part.content;
 					continue;
@@ -747,27 +726,11 @@ export class ChatAgent {
 	}
 
 	destroySummarizers(): void {
-		for (const [, s] of this.summarizers) {
-			try {
-				s.destroy();
-			} catch {
-				/* ignore */
-			}
-		}
+		for (const [, s] of this.summarizers) destroyQuiet(s);
 		this.summarizers.clear();
-		if (this.languageDetector) {
-			try {
-				this.languageDetector.destroy();
-			} catch {
-				/* ignore */
-			}
-			this.languageDetector = null;
-		}
+		destroyQuiet(this.languageDetector);
+		this.languageDetector = null;
 	}
-}
-
-function looksLikeMarkdown(text: string): boolean {
-	return /(?:^#{1,6} |^[-*+] |\d+\. |\*\*|__|\[.+?\]\(|^> |^```)/m.test(text);
 }
 
 type TTextSegment = { type: "prose" | "code"; content: string };

@@ -1,4 +1,5 @@
 import { resolveModelId } from "./models";
+import { readLocal, writeLocal } from "../storage";
 import type { TConversation, TInitialPrompt, TSettings } from "./types";
 
 const STORAGE_CONVOS = "oda.conversations.v1";
@@ -19,35 +20,27 @@ export function uid(): string {
 // ---------------------------------------------------------------------------
 
 export function loadSettings(): TSettings {
-	try {
-		const raw = localStorage.getItem(STORAGE_SETTINGS);
-		if (raw) {
-			const parsed = JSON.parse(raw) as Partial<TSettings>;
-			return {
-				systemPrompt: typeof parsed.systemPrompt === "string" ? parsed.systemPrompt : DEFAULT_SYSTEM,
-				temperature: typeof parsed.temperature === "number" ? parsed.temperature : 1,
-				topK: typeof parsed.topK === "number" ? parsed.topK : 3,
-				modelId: resolveModelId(typeof parsed.modelId === "string" ? parsed.modelId : ""),
-				toolsEnabled: typeof parsed.toolsEnabled === "boolean" ? parsed.toolsEnabled : true,
-			};
-		}
-	} catch {
-		/* ignore */
+	const raw = readLocal(STORAGE_SETTINGS);
+	if (raw) {
+		const parsed = JSON.parse(raw) as Partial<TSettings>;
+		return {
+			systemPrompt: typeof parsed.systemPrompt === "string" ? parsed.systemPrompt : DEFAULT_SYSTEM,
+			temperature: typeof parsed.temperature === "number" ? parsed.temperature : 1,
+			topK: typeof parsed.topK === "number" ? parsed.topK : 3,
+			modelId: resolveModelId(typeof parsed.modelId === "string" ? parsed.modelId : ""),
+			toolsEnabled: typeof parsed.toolsEnabled === "boolean" ? parsed.toolsEnabled : true,
+		};
 	}
 	return { systemPrompt: DEFAULT_SYSTEM, temperature: 1, topK: 3, modelId: resolveModelId(), toolsEnabled: true };
 }
 
 export function saveSettings(settings: TSettings): void {
-	try {
-		localStorage.setItem(STORAGE_SETTINGS, JSON.stringify(settings));
-	} catch {
-		/* ignore */
-	}
+	writeLocal(STORAGE_SETTINGS, JSON.stringify(settings));
 }
 
 export function load(): void {
+	const raw = readLocal(STORAGE_CONVOS);
 	try {
-		const raw = localStorage.getItem(STORAGE_CONVOS);
 		conversations = raw ? (JSON.parse(raw) as TConversation[]) : [];
 	} catch {
 		conversations = [];
@@ -55,11 +48,7 @@ export function load(): void {
 }
 
 export function save(): void {
-	try {
-		localStorage.setItem(STORAGE_CONVOS, JSON.stringify(conversations));
-	} catch {
-		/* ignore */
-	}
+	writeLocal(STORAGE_CONVOS, JSON.stringify(conversations));
 }
 
 // ---------------------------------------------------------------------------

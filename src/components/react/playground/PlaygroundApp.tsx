@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChatAgent } from "../../../lib/chat/agent";
 import type { TAvailability } from "../../../lib/chat/agent";
+import { pillClass } from "../../../lib/ui";
 import { BUILT_IN_MODEL_ID } from "../../../lib/chat/models";
 import { PRESETS, validate } from "../../../lib/playground";
 import type { TIssue } from "../../../lib/playground";
@@ -261,12 +262,11 @@ export default function PlaygroundApp() {
 	const blocked = unavailable;
 	const downloadPct = Math.round(Math.max(0, Math.min(1, downloadProgress)) * 100);
 
-	const presetBtnClass = (active: boolean) => {
-		const base = "relative rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition-colors sm:text-sm";
-		return active
-			? `${base} bg-zinc-950/5 text-zinc-900 ring-zinc-950/15 dark:bg-white/10 dark:text-white dark:ring-white/20`
-			: `${base} bg-white text-zinc-600 ring-zinc-950/10 hover:bg-zinc-50 hover:text-zinc-900 dark:bg-white/5 dark:text-zinc-300 dark:ring-white/10 dark:hover:bg-white/10 dark:hover:text-white`;
-	};
+	const presetBtnClass = (active: boolean) =>
+		pillClass(
+			"relative rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition-colors sm:text-sm",
+			active,
+		);
 
 	const tabBtnClass = (active: boolean) =>
 		active

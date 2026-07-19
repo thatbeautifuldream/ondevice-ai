@@ -4,6 +4,8 @@
 // pattern: no DOM access, hooks for UI notifications, async generators for
 // streaming.
 
+import { describeDomError, destroyQuiet } from "./errors";
+
 export type TWritingAvailability = "unavailable" | "downloadable" | "downloading" | "available";
 
 export type TTool = "write" | "rewrite" | "proofread";
@@ -59,15 +61,16 @@ export type TWritingHooks = {
 	onDownloadEnd?: () => void;
 };
 
+/** Map a thrown value to a writing-domain message via its DOMException name. */
 function friendlyError(e: unknown): string {
-	const err = e as DOMException;
-	if (err?.name === "QuotaExceededError") {
-		return "The text is too long for the on-device model. Try a shorter passage.";
-	}
-	if (err?.name === "NotSupportedError") {
-		return "The model couldn't handle this request. Try different text or options.";
-	}
-	return err?.message || "Something went wrong.";
+	return describeDomError(
+		e,
+		{
+			QuotaExceededError: "The text is too long for the on-device model. Try a shorter passage.",
+			NotSupportedError: "The model couldn't handle this request. Try different text or options.",
+		},
+		"Something went wrong.",
+	);
 }
 
 export class WritingEngine {
@@ -83,13 +86,9 @@ export class WritingEngine {
 	}
 
 	static supported(tool: TTool): boolean {
-		try {
-			if (tool === "write") return typeof Writer !== "undefined";
-			if (tool === "rewrite") return typeof Rewriter !== "undefined";
-			return typeof Proofreader !== "undefined";
-		} catch {
-			return false;
-		}
+		if (tool === "write") return typeof Writer !== "undefined";
+		if (tool === "rewrite") return typeof Rewriter !== "undefined";
+		return typeof Proofreader !== "undefined";
 	}
 
 	async availability(tool: TTool): Promise<TWritingAvailability> {
@@ -228,13 +227,7 @@ export class WritingEngine {
 	}
 
 	destroy(): void {
-		for (const d of [this.writer?.instance, this.rewriter?.instance, this.proofreader]) {
-			try {
-				d?.destroy();
-			} catch {
-				/* ignore */
-			}
-		}
+		for (const d of [this.writer?.instance, this.rewriter?.instance, this.proofreader]) destroyQuiet(d);
 		this.writer = null;
 		this.rewriter = null;
 		this.proofreader = null;

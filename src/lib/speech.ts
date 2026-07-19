@@ -70,11 +70,7 @@ export class SpeechEngine {
 	private detector: LanguageDetector | null = null;
 
 	static supported(): boolean {
-		try {
-			return typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
-		} catch {
-			return false;
-		}
+		return typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
 	}
 
 	// Chrome populates getVoices() asynchronously: wait for voiceschanged, with

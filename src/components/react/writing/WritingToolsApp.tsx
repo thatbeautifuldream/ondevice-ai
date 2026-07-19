@@ -9,6 +9,7 @@ import {
 	buildProofreadSegments,
 	optionLabel,
 } from "../../../lib/writing";
+import { pillClass } from "../../../lib/ui";
 import type {
 	TProofreadSegment,
 	TRewriterOptions,
@@ -318,13 +319,11 @@ export default function WritingToolsApp() {
 	const correctionCount = segments?.filter((s) => s.kind === "correction").length ?? 0;
 	const copyable = tool === "proofread" ? correctedInput : output;
 
-	const toolBtnClass = (active: boolean) => {
-		const base =
-			"relative inline-flex items-center gap-1.5 rounded-full py-1.5 pr-3 pl-2 text-xs font-medium ring-1 transition-colors sm:text-sm";
-		return active
-			? `${base} bg-zinc-950/5 text-zinc-900 ring-zinc-950/15 dark:bg-white/10 dark:text-white dark:ring-white/20`
-			: `${base} bg-white text-zinc-600 ring-zinc-950/10 hover:bg-zinc-50 hover:text-zinc-900 dark:bg-white/5 dark:text-zinc-300 dark:ring-white/10 dark:hover:bg-white/10 dark:hover:text-white`;
-	};
+	const toolBtnClass = (active: boolean) =>
+		pillClass(
+			"relative inline-flex items-center gap-1.5 rounded-full py-1.5 pr-3 pl-2 text-xs font-medium ring-1 transition-colors sm:text-sm",
+			active,
+		);
 
 	return (
 		<div className="min-h-dvh">

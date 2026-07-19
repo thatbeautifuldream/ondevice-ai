@@ -60,21 +60,17 @@ export function toolSystemPrompt(tools: TTool[]): string {
 	].join("\n");
 }
 
-function tolerantJson(raw: string): Record<string, unknown> | null {
+/** Parse JSON without throwing; returns null on any failure. */
+function tryParseJson(raw: string): Record<string, unknown> | null {
 	try {
 		return JSON.parse(raw) as Record<string, unknown>;
 	} catch {
-		/* fall through */
+		return null;
 	}
-	const inner = raw.match(/\{[\s\S]*\}/);
-	if (inner) {
-		try {
-			return JSON.parse(inner[0]) as Record<string, unknown>;
-		} catch {
-			/* fall through */
-		}
-	}
-	return null;
+}
+
+function tolerantJson(raw: string): Record<string, unknown> | null {
+	return tryParseJson(raw) ?? tryParseJson(raw.match(/\{[\s\S]*\}/)?.[0] ?? "");
 }
 
 // Parse a completed model turn. Tolerant across the wire formats small

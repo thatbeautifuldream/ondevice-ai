@@ -99,10 +99,6 @@ function realType(v: unknown): string {
 	return typeof v;
 }
 
-function fmt(v: unknown): string {
-	return JSON.stringify(v);
-}
-
 function deepEqual(a: unknown, b: unknown): boolean {
 	if (a === b) return true;
 	if (typeof a !== typeof b) return false;
@@ -149,7 +145,7 @@ function walk(schema: Record<string, unknown>, value: unknown, path: string, iss
 
 	if (Array.isArray(schema.enum)) {
 		if (!schema.enum.some((e) => deepEqual(e, value))) {
-			issues.push({ path, msg: `must be one of ${fmt(schema.enum)}` });
+			issues.push({ path, msg: `must be one of ${JSON.stringify(schema.enum)}` });
 		}
 	}
 

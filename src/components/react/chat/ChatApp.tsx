@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { ChatAgent } from "../../../lib/chat/agent";
 import * as store from "../../../lib/chat/store";
+import { readLocal, writeLocal } from "../../../lib/storage";
 import { WIKIPEDIA_TOOLS } from "../../../lib/chat/tools/wikipedia";
 import type { TChatMessage, TSettings } from "../../../lib/chat/types";
 import { Icon } from "../Icon";
@@ -49,13 +50,7 @@ export default function ChatApp() {
 	const [isGenerating, setIsGenerating] = useState(false);
 	const [generatingId, setGeneratingId] = useState<string | null>(null);
 	const [sidebarOpen, setSidebarOpen] = useState(false);
-	const [sidebarCollapsed, setSidebarCollapsedState] = useState(() => {
-		try {
-			return localStorage.getItem(STORAGE_SIDEBAR) === "1";
-		} catch {
-			return false;
-		}
-	});
+	const [sidebarCollapsed, setSidebarCollapsedState] = useState(() => readLocal(STORAGE_SIDEBAR) === "1");
 	const [settingsOpen, setSettingsOpen] = useState(false);
 
 	const abortRef = useRef<AbortController | null>(null);
@@ -115,11 +110,7 @@ export default function ChatApp() {
 
 	const setSidebarCollapsed = (collapsed: boolean) => {
 		setSidebarCollapsedState(collapsed);
-		try {
-			localStorage.setItem(STORAGE_SIDEBAR, collapsed ? "1" : "0");
-		} catch {
-			/* ignore */
-		}
+		writeLocal(STORAGE_SIDEBAR, collapsed ? "1" : "0");
 	};
 
 	const toggleSidebar = () => {

@@ -104,10 +104,6 @@ export function getSiteOrigin(site?: URL | null) {
 	return new URL(site?.toString() ?? siteConfig.url).origin;
 }
 
-export function absoluteUrl(path: string, site?: URL | null) {
-	return new URL(path, `${getSiteOrigin(site)}/`).toString();
-}
-
 export function buildWebsiteSchema(site?: URL | null) {
 	const origin = getSiteOrigin(site);
 	return {
@@ -143,7 +139,7 @@ export function buildWebApplicationSchema(site?: URL | null) {
 			price: "0",
 			priceCurrency: "USD",
 		},
-		image: absoluteUrl(siteConfig.defaultImage, site),
+		image: new URL(siteConfig.defaultImage, `${getSiteOrigin(site)}/`).toString(),
 		isPartOf: { "@id": `${origin}/#website` },
 	};
 }
