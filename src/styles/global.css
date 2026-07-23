@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
 /* Streamdown (chat markdown renderer): scan its dist for Tailwind classes and
    pull in its animation/typography stylesheet. KaTeX styles back the
@@ -52,6 +53,13 @@
 	--muted: var(--color-zinc-50);
 	--muted-foreground: var(--color-zinc-500);
 	--sidebar: var(--color-zinc-50);
+	/* shadcn primitives (Button/Popover/Command/Tooltip) */
+	--secondary: var(--color-zinc-100);
+	--secondary-foreground: var(--color-zinc-900);
+	--popover: var(--color-white);
+	--popover-foreground: var(--color-zinc-900);
+	--ring: color-mix(in oklab, var(--color-zinc-950) 15%, transparent);
+	--input: color-mix(in oklab, var(--color-zinc-950) 12%, transparent);
 }
 
 .dark {
@@ -61,6 +69,13 @@
 	--muted: color-mix(in oklab, var(--color-white) 5%, transparent);
 	--muted-foreground: var(--color-zinc-400);
 	--sidebar: color-mix(in oklab, var(--color-white) 4%, transparent);
+	/* shadcn primitives (Button/Popover/Command/Tooltip) */
+	--secondary: color-mix(in oklab, var(--color-white) 10%, transparent);
+	--secondary-foreground: var(--color-zinc-100);
+	--popover: var(--color-zinc-900);
+	--popover-foreground: var(--color-zinc-100);
+	--ring: color-mix(in oklab, var(--color-white) 18%, transparent);
+	--input: color-mix(in oklab, var(--color-white) 12%, transparent);
 }
 
 @theme {
@@ -83,6 +98,12 @@
 	--color-primary: var(--accent);
 	--color-primary-foreground: var(--accent-fg);
 	--color-sidebar: var(--sidebar);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-ring: var(--ring);
+	--color-input: var(--input);
 }
 
 /* Apply a squircle curve to every rounded corner in the app.
